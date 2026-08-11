@@ -126,3 +126,7 @@ The smoke test checks the floating window behavior, all-Spaces support, full-scr
 ## Logo sources
 
 The app bundles the Codex, Claude, and Pi marks. Source links are listed in [`Resources/AgentLogos/SOURCES.md`](Resources/AgentLogos/SOURCES.md).
+
+## License
+
+CodeWindow is available under the [MIT License](LICENSE).
