@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "codewindow",
+  "compatibility_date": "2026-08-12",
+  // Assets-only: there is no Worker script, so no runtime compatibility flags.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

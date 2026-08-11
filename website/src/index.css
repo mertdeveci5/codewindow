@@ -1,0 +1,726 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-code: var(--code);
+  --color-code-highlight: var(--code-highlight);
+  --code-foreground: var(--code-foreground);
+  --font-sans: var(--font-ui);
+  --font-heading: var(--font-ui);
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --radius: 0.625rem;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell,
+    "Fira Sans", "Droid Sans", "Helvetica Neue", Arial, sans-serif;
+  --background: oklch(96.7% 0.003 264.542);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.67 0.19 263);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.91 0.002 286.3);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(94.5% 0.003 267.1);
+  --muted-foreground: oklch(0.54 0.016 285.938);
+  --accent: oklch(0.91 0.002 286.3);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.637 0.237 25.331);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.871 0.006 286.286);
+  --ring: oklch(0.67 0.19 263);
+  --info: oklch(0.67 0.16 250);
+  --info-foreground: oklch(0.43 0.14 252);
+  --success: oklch(0.74 0.16 151);
+  --success-foreground: oklch(0.46 0.11 154);
+  --warning: oklch(0.79 0.16 84);
+  --warning-foreground: oklch(0.49 0.11 72);
+  --code: oklch(1 0 0);
+  --code-foreground: var(--foreground);
+  --code-highlight: oklch(0.96 0.003 264.5);
+}
+
+.dark {
+  --background: oklch(0.17 0.004 264.542);
+  --foreground: oklch(0.965 0.005 285.823);
+  --card: oklch(0.205 0.004 247.839);
+  --card-foreground: oklch(0.965 0.005 285.823);
+  --popover: oklch(0.205 0.004 247.839);
+  --popover-foreground: oklch(0.965 0.005 285.823);
+  --primary: oklch(0.72 0.17 263);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.27 0.006 267.1);
+  --secondary-foreground: oklch(0.965 0.006 285.885);
+  --muted: oklch(0.27 0.006 267.1);
+  --muted-foreground: oklch(0.72 0.012 285.938);
+  --accent: oklch(0.27 0.006 267.1);
+  --accent-foreground: oklch(0.965 0.006 285.885);
+  --destructive: oklch(0.58 0.19 25.331);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.32 0.006 286.32);
+  --input: oklch(0.32 0.006 286.32);
+  --ring: oklch(0.72 0.17 263);
+  --info: oklch(0.72 0.15 250);
+  --info-foreground: oklch(0.82 0.08 252);
+  --success: oklch(0.76 0.14 151);
+  --success-foreground: oklch(0.84 0.07 154);
+  --warning: oklch(0.82 0.14 84);
+  --warning-foreground: oklch(0.88 0.05 72);
+  --code: oklch(0.205 0.004 247.839);
+  --code-foreground: var(--foreground);
+  --code-highlight: oklch(0.24 0.006 262);
+}
+
+/* Panel colors mirrored from Sources/CodeWindowApp/PanelContentView.swift. */
+:root {
+  --cw-surface: #060607;
+  --cw-title: rgb(255 255 255 / 0.96);
+  --cw-meta: rgb(255 255 255 / 0.48);
+  --cw-diagnostic: rgb(255 255 255 / 0.64);
+  --cw-muted: rgb(255 255 255 / 0.3);
+  --cw-divider: rgb(255 255 255 / 0.075);
+  --cw-hairline: rgb(255 255 255 / 0.06);
+  --cw-working: #32d74b;
+  --cw-starting: #0a84ff;
+  --cw-attention: #ff9f0a;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+    scroll-padding-top: 4.5rem;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: 15px;
+    overflow-y: scroll;
+    text-rendering: optimizeLegibility;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 32%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Site styles live in the components layer so Tailwind utilities can override them. */
+@layer components {
+  /* ---------------------------------------------------------------- shell */
+
+  .page {
+    position: relative;
+    display: flex;
+    min-height: 100svh;
+    flex-direction: column;
+  }
+
+  /* A very quiet vertical light so the near-black page is not flat. */
+  .page::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(
+        52rem 28rem at 50% -6rem,
+        color-mix(in oklab, var(--primary) 9%, transparent),
+        transparent 70%
+      ),
+      linear-gradient(180deg, rgb(255 255 255 / 0.02), transparent 24rem);
+  }
+
+  /* One measure for every band on the page. */
+  .shell {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 44rem;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  @media (max-width: 520px) {
+    .shell {
+      padding-inline: 1rem;
+    }
+  }
+
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    z-index: 60;
+  }
+
+  .skip-link:focus {
+    left: 0.75rem;
+    top: 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--card);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    border-bottom: 1px solid rgb(255 255 255 / 0.06);
+    background: color-mix(in oklab, var(--background) 84%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  /* ------------------------------------------------------------------ hero */
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgb(255 255 255 / 0.5);
+  }
+
+  .hero-title {
+    font-size: clamp(1.875rem, 7.5vw, 2.75rem);
+    font-weight: 560;
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+    color: rgb(255 255 255 / 0.95);
+  }
+
+  .lede {
+    font-size: clamp(0.9375rem, 3.4vw, 1.0625rem);
+    font-weight: 450;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+    text-wrap: pretty;
+    color: rgb(255 255 255 / 0.66);
+  }
+
+  /* -------------------------------------------------------------- benefits */
+
+  .benefit-grid {
+    display: grid;
+    gap: 1px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.07);
+    border-radius: 0.875rem;
+    background: rgb(255 255 255 / 0.07);
+  }
+
+  @media (min-width: 640px) {
+    .benefit-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .benefit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.9rem 1rem;
+    background: color-mix(in oklab, var(--background) 96%, white);
+  }
+
+  .benefit h2 {
+    font-size: 0.8125rem;
+    font-weight: 550;
+    letter-spacing: -0.005em;
+    color: rgb(255 255 255 / 0.88);
+  }
+
+  .benefit p {
+    font-size: 0.8125rem;
+    line-height: 1.3rem;
+    text-wrap: pretty;
+    color: rgb(255 255 255 / 0.6);
+  }
+
+  /* --------------------------------------------------------------- install */
+
+  .install {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1rem;
+    border: 1px solid rgb(255 255 255 / 0.08);
+    border-radius: 0.875rem;
+    background: rgb(255 255 255 / 0.025);
+  }
+
+  @media (max-width: 560px) {
+    .install {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  .install h2 {
+    margin-bottom: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    letter-spacing: -0.005em;
+    color: rgb(255 255 255 / 0.88);
+  }
+
+  .install p {
+    font-size: 0.8125rem;
+    font-weight: 450;
+    line-height: 1.35rem;
+    text-wrap: pretty;
+    color: rgb(255 255 255 / 0.66);
+  }
+
+  .install-note {
+    margin-top: 0.625rem;
+    font-size: 0.75rem;
+    line-height: 1.2rem;
+    color: rgb(255 255 255 / 0.5);
+  }
+
+  .text-link {
+    color: color-mix(in oklab, var(--primary) 92%, white);
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in oklab, var(--primary) 45%, transparent);
+    text-underline-offset: 2px;
+    transition: color 0.15s ease;
+  }
+
+  .text-link:hover {
+    color: color-mix(in oklab, var(--primary) 60%, white);
+  }
+
+  /* ------------------------------------------------------- marker accent */
+
+  /* An original two-pass marker: a soft wash plus an uneven hand-drawn stroke. */
+  .marker {
+    display: inline;
+    margin: -0.04em -0.1em;
+    padding: 0.04em 0.1em;
+    border-radius: 0.28em 0.16em 0.22em 0.14em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    background-image: linear-gradient(
+      100deg,
+      color-mix(in oklab, var(--primary) 34%, transparent),
+      color-mix(in oklab, var(--primary) 12%, transparent) 8%,
+      color-mix(in oklab, var(--primary) 26%, transparent) 92%,
+      color-mix(in oklab, var(--primary) 8%, transparent)
+    );
+  }
+
+  .hand-underline {
+    display: inline;
+    padding-bottom: 3px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 120 10'%3E%3Cpath d='M2 7.2c22-3.4 44-4.2 66-2.6 18 1.3 34 1.1 50-1.2' stroke='%237d8cff' stroke-width='2.6' fill='none' stroke-linecap='round' opacity='0.85'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 0 calc(100% - 1px);
+    background-size: 100% 6px;
+  }
+
+  /* ------------------------------------------------------------- footer */
+
+  .site-footer {
+    position: relative;
+    z-index: 1;
+    margin-top: auto;
+    border-top: 1px solid rgb(255 255 255 / 0.06);
+    font-size: 0.75rem;
+    color: rgb(255 255 255 / 0.52);
+  }
+
+  .site-footer a {
+    color: rgb(255 255 255 / 0.72);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .site-footer a:hover {
+    color: rgb(255 255 255 / 0.9);
+  }
+
+  /* ---------------------------------------------------------- demo frame */
+
+  .demo-figure {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  /* A player-like enclosure: artboard above, transport below. */
+  .demo-frame {
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.09);
+    border-radius: 1rem;
+    background: rgb(255 255 255 / 0.02);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 40px 80px -46px rgb(0 0 0 / 0.9);
+  }
+
+  .demo-viewport {
+    padding: 0.625rem;
+  }
+
+  .demo-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-top: 1px solid rgb(255 255 255 / 0.06);
+    background: rgb(255 255 255 / 0.015);
+  }
+
+  .demo-icon-button {
+    display: flex;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    color: rgb(255 255 255 / 0.7);
+    background: rgb(255 255 255 / 0.06);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .demo-icon-button:hover {
+    color: rgb(255 255 255 / 0.95);
+    background: rgb(255 255 255 / 0.12);
+  }
+
+  .demo-segmented {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 0.5rem;
+    background: rgb(255 255 255 / 0.05);
+  }
+
+  .demo-segment {
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    white-space: nowrap;
+    color: rgb(255 255 255 / 0.55);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .demo-segment:hover {
+    color: rgb(255 255 255 / 0.85);
+  }
+
+  .demo-segment[aria-pressed="true"] {
+    background: rgb(255 255 255 / 0.12);
+    color: rgb(255 255 255 / 0.95);
+  }
+
+  .demo-expand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    color: rgb(255 255 255 / 0.62);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .demo-expand:hover {
+    background: rgb(255 255 255 / 0.08);
+    color: rgb(255 255 255 / 0.95);
+  }
+
+  .demo-caption {
+    font-size: 0.6875rem;
+    line-height: 1.1rem;
+    color: rgb(255 255 255 / 0.5);
+  }
+
+  /* --------------------------------------------------------- panel demo */
+
+  /* Where the panel floats over the mock desktop. */
+  .panel-float {
+    position: absolute;
+    top: 58px;
+    right: 24px;
+    pointer-events: none;
+  }
+
+  .cw-panel {
+    width: 296px;
+    padding: 5px;
+    border-radius: 18px;
+    background: var(--cw-surface);
+    box-shadow:
+      inset 0 0 0 0.75px rgb(255 255 255 / 0.08),
+      0 0 0 1px rgb(255 255 255 / 0.13),
+      0 22px 48px -13px rgb(0 0 0 / 0.88),
+      0 5px 14px rgb(0 0 0 / 0.58);
+    transition:
+      opacity 0.24s ease,
+      transform 0.24s ease;
+  }
+
+  .cw-panel[data-hidden="true"] {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+
+  .cw-row {
+    position: relative;
+    display: flex;
+    height: 40px;
+    align-items: center;
+    gap: 9px;
+    padding: 0 9px;
+  }
+
+  .cw-row[data-attention="true"] {
+    border-radius: 13px;
+    background: rgb(255 159 10 / 0.16);
+  }
+
+  .cw-divider {
+    position: absolute;
+    top: 0;
+    left: 40px; /* rowInset 9 + glyph 22 + gap 9 */
+    right: 9px;
+    height: 0.5px;
+    background: var(--cw-divider);
+  }
+
+  .cw-rail {
+    position: absolute;
+    left: 2px;
+    top: 7px;
+    width: 2px;
+    height: 26px;
+    border-radius: 9999px;
+    background: var(--cw-attention);
+  }
+
+  .cw-glyph {
+    display: flex;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .cw-primary {
+    font-size: 12.5px;
+    line-height: 1.15;
+    color: var(--cw-title);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cw-primary[data-mono="true"] {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+
+  .cw-meta {
+    display: flex;
+    gap: 4px;
+    margin-top: 1.5px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--cw-meta);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .panel-stage {
+    position: relative;
+    height: var(--stage-height, 270px);
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid rgb(255 255 255 / 0.07);
+    background:
+      radial-gradient(24rem 15rem at 92% 10%, rgb(125 140 255 / 0.1), transparent 70%),
+      linear-gradient(145deg, oklch(0.18 0.008 264.542), oklch(0.135 0.004 264.542));
+    box-shadow: 0 24px 60px -32px rgb(0 0 0 / 0.9);
+  }
+
+  .panel-stage::after {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgb(255 255 255 / 0.015) 1px, transparent 1px);
+    background-size: 100% 24px;
+    content: "";
+    pointer-events: none;
+  }
+
+  .panel-stage-window {
+    position: absolute;
+    inset: 30px 104px 32px 28px;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.06);
+    border-radius: 10px;
+    background: rgb(7 7 9 / 0.5);
+    box-shadow: 0 16px 35px rgb(0 0 0 / 0.22);
+    transition: border-color 0.24s ease, box-shadow 0.24s ease;
+  }
+
+  .panel-stage-window-bar {
+    display: flex;
+    height: 28px;
+    align-items: center;
+    gap: 12px;
+    padding-inline: 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 0.05);
+    background: rgb(255 255 255 / 0.018);
+  }
+
+  .panel-stage-window-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px 16px;
+  }
+
+  .panel-stage[data-focused="true"] .panel-stage-window {
+    border-color: color-mix(in oklab, var(--primary) 42%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+
+  /*
+   * The scene is an artboard: the panel inside it has to stay 296px so the
+   * "296 pt" claim holds, so on narrow screens the whole artboard is widened
+   * and scaled back down by the same factor. A transform does not shrink the
+   * layout box, so the slack height is taken back with a margin. The stage is
+   * border-box, so --scene-height is exactly its height.
+   */
+  .scene-scale {
+    --scene-height: var(--stage-height, 270px);
+    --scene-scale: 1;
+    width: calc(100% / var(--scene-scale));
+    transform: scale(var(--scene-scale));
+    transform-origin: top left;
+    margin-bottom: calc(var(--scene-height) * (var(--scene-scale) - 1));
+  }
+
+  /* Each step below keeps the 296px panel clear of the artboard's left edge. */
+  @media (max-width: 520px) {
+    .scene-scale {
+      --scene-scale: 0.92;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .scene-scale {
+      --scene-scale: 0.84;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .scene-scale {
+      --scene-scale: 0.76;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .panel-float {
+      right: 16px;
+    }
+
+    .panel-stage-window {
+      inset-inline-start: 18px;
+      inset-inline-end: 84px;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .demo-viewport {
+      padding: 0.375rem;
+    }
+  }
+}
