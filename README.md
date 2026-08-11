@@ -44,7 +44,15 @@ If a row says `hooks not reporting`, that session has not loaded the hooks yet. 
 
 Run the installer again after replacing CodeWindow with a newer version. This updates the small reporter used by the hooks.
 
-Right-click the panel to quit the app.
+## Show, hide, and quit
+
+Right-click the panel and choose Hide CodeWindow to remove the panel without stopping its session tracking. Open CodeWindow again from Applications, Finder, or Spotlight to show it again.
+
+Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeWindow normally to start it again. You can also use Terminal:
+
+```sh
+open -a CodeWindow
+```
 
 ## Remove CodeWindow
 

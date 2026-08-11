@@ -15,6 +15,7 @@ struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     let reportHeight: (CGFloat) -> Void
     let installHooks: () -> SetupNotice
+    let hidePanel: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var setupNotice: SetupNotice?
@@ -39,6 +40,7 @@ struct PanelContentView: View {
             .contextMenu {
                 Button("Install or update agent hooks…", action: showInstallResult)
                 Divider()
+                Button("Hide CodeWindow", action: hidePanel)
                 Button("Quit CodeWindow") { NSApplication.shared.terminate(nil) }
             }
             .accessibilityElement(children: .contain)

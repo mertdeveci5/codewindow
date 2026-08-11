@@ -58,6 +58,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        panel?.orderFrontRegardless()
+        return true
+    }
+
     private func makePanel(store: SessionStore) -> FloatingPanel {
         let panel = FloatingPanel(
             contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelMetrics.initialHeight),
@@ -89,6 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             installHooks: { [weak self] in
                 self?.installHooks()
                     ?? SetupNotice(message: "setup failed · use the Terminal command", succeeded: false)
+            },
+            hidePanel: { [weak self] in
+                self?.panel?.orderOut(nil)
             }
         )
         panel.contentView = NSHostingView(rootView: content)
