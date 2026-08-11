@@ -24,6 +24,7 @@ func report() throws {
         process = ProcessInspector.stamp(pid: pid)
     } else {
         process = ProcessInspector.findAgentProcess(agent: agent)
+            ?? ProcessInspector.findNodeProcess()
     }
 
     let directory = try StateFiles.directory()

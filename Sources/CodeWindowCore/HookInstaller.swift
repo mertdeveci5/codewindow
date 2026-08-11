@@ -33,7 +33,6 @@ public struct InstallLocations: Sendable {
 
 public struct InstallationResult: Sendable {
     public let changed: [URL]
-    public let backups: [URL]
 }
 
 public enum HookInstaller {
@@ -63,32 +62,31 @@ public enum HookInstaller {
 
     private static func installPrepared(at locations: InstallLocations) throws -> InstallationResult {
         var changed: [URL] = []
-        var backups: [URL] = []
         if try installReporter(at: locations) { changed.append(locations.installedReporter) }
 
         let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
         let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
 
-        let codex = try updateConfiguration(
+        if try updateConfiguration(
             at: locations.codexConfiguration,
             events: codexEvents,
             command: codexCommand,
             operation: .install
-        )
-        changed.append(contentsOf: codex.changed)
-        backups.append(contentsOf: codex.backups)
+        ) {
+            changed.append(locations.codexConfiguration)
+        }
 
-        let claude = try updateConfiguration(
+        if try updateConfiguration(
             at: locations.claudeConfiguration,
             events: claudeEvents,
             command: claudeCommand,
             operation: .install
-        )
-        changed.append(contentsOf: claude.changed)
-        backups.append(contentsOf: claude.backups)
+        ) {
+            changed.append(locations.claudeConfiguration)
+        }
 
         if try installPiExtension(at: locations) { changed.append(locations.piExtension) }
-        return InstallationResult(changed: changed, backups: backups)
+        return InstallationResult(changed: changed)
     }
 
     public static func uninstall(at locations: InstallLocations) throws -> InstallationResult {
@@ -102,27 +100,26 @@ public enum HookInstaller {
 
     private static func uninstallPrepared(at locations: InstallLocations) throws -> InstallationResult {
         var changed: [URL] = []
-        var backups: [URL] = []
         let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
         let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
 
-        let codex = try updateConfiguration(
+        if try updateConfiguration(
             at: locations.codexConfiguration,
             events: codexEvents,
             command: codexCommand,
             operation: .uninstall
-        )
-        changed.append(contentsOf: codex.changed)
-        backups.append(contentsOf: codex.backups)
+        ) {
+            changed.append(locations.codexConfiguration)
+        }
 
-        let claude = try updateConfiguration(
+        if try updateConfiguration(
             at: locations.claudeConfiguration,
             events: claudeEvents,
             command: claudeCommand,
             operation: .uninstall
-        )
-        changed.append(contentsOf: claude.changed)
-        backups.append(contentsOf: claude.backups)
+        ) {
+            changed.append(locations.claudeConfiguration)
+        }
 
         if try removeOwnedFile(at: locations.piExtension, containing: piMarker) {
             changed.append(locations.piExtension)
@@ -130,16 +127,32 @@ public enum HookInstaller {
         if try removeOwnedReporter(at: locations.installedReporter) {
             changed.append(locations.installedReporter)
         }
-        return InstallationResult(changed: changed, backups: backups)
+        if try removeSupportDirectory(at: locations.supportDirectory) {
+            changed.append(locations.supportDirectory)
+        }
+        for configuration in [locations.codexConfiguration, locations.claudeConfiguration] {
+            changed.append(contentsOf: try removeLegacyBackups(for: configuration))
+        }
+        for directory in [
+            locations.codexConfiguration.deletingLastPathComponent(),
+            locations.claudeConfiguration.deletingLastPathComponent(),
+            locations.piExtension.deletingLastPathComponent(),
+        ] {
+            try removeEmptyAncestors(from: directory, stoppingBefore: locations.home)
+        }
+        return InstallationResult(changed: changed)
     }
 
     private static func installationTargets(_ locations: InstallLocations) -> [URL] {
-        [
+        var targets = [
             locations.installedReporter,
             locations.codexConfiguration,
             locations.claudeConfiguration,
             locations.piExtension,
         ]
+        targets.append(contentsOf: legacyBackups(for: locations.codexConfiguration))
+        targets.append(contentsOf: legacyBackups(for: locations.claudeConfiguration))
+        return targets
     }
 
     private static func withRollback<Result>(
@@ -205,20 +218,22 @@ public enum HookInstaller {
         events: [String],
         command: String,
         operation: ConfigurationOperation
-    ) throws -> InstallationResult {
+    ) throws -> Bool {
         let original = try loadObject(at: url)
         try validateHookStructure(in: original, events: events, at: url)
         let updated = mutate(original, events: events, command: command, operation: operation)
         guard !NSDictionary(dictionary: original).isEqual(to: updated) else {
-            return InstallationResult(changed: [], backups: [])
+            return false
         }
 
-        var backups: [URL] = []
-        if FileManager.default.fileExists(atPath: url.path) {
-            backups.append(try backup(url))
+        if operation == .uninstall, updated.isEmpty {
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        } else {
+            try writeObject(updated, to: url)
         }
-        try writeObject(updated, to: url)
-        return InstallationResult(changed: [url], backups: backups)
+        return true
     }
 
     private static func mutate(
@@ -293,13 +308,7 @@ public enum HookInstaller {
         var data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0A)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try atomicWrite(data, to: url, permissions: 0o600)
-    }
-
-    private static func backup(_ url: URL) throws -> URL {
-        let destination = url.appendingPathExtension("codewindow-backup-\(UUID().uuidString)")
-        try FileManager.default.copyItem(at: url, to: destination)
-        return destination
+        try atomicWrite(data, to: url, permissions: filePermissions(at: url) ?? 0o600)
     }
 
     private static func installPiExtension(at locations: InstallLocations) throws -> Bool {
@@ -424,6 +433,50 @@ public enum HookInstaller {
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
         try FileManager.default.removeItem(at: url)
         return true
+    }
+
+    private static func removeSupportDirectory(at url: URL) throws -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        try FileManager.default.removeItem(at: url)
+        return true
+    }
+
+    private static func legacyBackups(for configuration: URL) -> [URL] {
+        let directory = configuration.deletingLastPathComponent()
+        let prefix = configuration.lastPathComponent + ".codewindow-backup"
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        return files.filter { $0.lastPathComponent.hasPrefix(prefix) }
+    }
+
+    private static func removeLegacyBackups(for configuration: URL) throws -> [URL] {
+        let backups = legacyBackups(for: configuration)
+        for backup in backups { try FileManager.default.removeItem(at: backup) }
+        return backups
+    }
+
+    private static func removeEmptyAncestors(from directory: URL, stoppingBefore root: URL) throws {
+        var directory = directory.standardizedFileURL
+        let root = root.standardizedFileURL
+        while directory != root, directory.path.hasPrefix(root.path + "/") {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue
+            else { return }
+            let contents = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            guard contents.isEmpty else { return }
+            try FileManager.default.removeItem(at: directory)
+            directory.deleteLastPathComponent()
+        }
+    }
+
+    private static func filePermissions(at url: URL) -> Int? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let permissions = attributes[.posixPermissions] as? NSNumber
+        else { return nil }
+        return permissions.intValue
     }
 
     private static func shellQuote(_ value: String) -> String {

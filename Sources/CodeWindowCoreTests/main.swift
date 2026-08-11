@@ -249,6 +249,17 @@ func testStateFiles() throws {
     try require(ProcessInspector.stamp(pid: Int32.max) == nil, "Impossible PID accepted")
 }
 
+func testAppVersions() throws {
+    let current = try unwrap(AppVersion("0.1.2"), "Current version was rejected")
+    let newer = try unwrap(AppVersion("v0.1.10"), "Tagged version was rejected")
+    let equivalent = try unwrap(AppVersion("0.1.2.0"), "Equivalent version was rejected")
+
+    try require(newer > current, "Numeric components were compared lexically")
+    try require(current == equivalent, "Trailing zero changed version equality")
+    try require(AppVersion("1.0-beta") == nil, "Prerelease text was accepted")
+    try require(AppVersion("1..0") == nil, "Empty version component was accepted")
+}
+
 func testTerminalAgentDiscovery() throws {
     let currentPID = ProcessInfo.processInfo.processIdentifier
     let discovered = ProcessInspector.terminalAgentProcesses()
@@ -340,6 +351,14 @@ func testHookInstaller() throws {
     ]
     try writeJSON(original, to: locations.claudeConfiguration)
     try writeJSON(original, to: locations.codexConfiguration)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o640],
+        ofItemAtPath: locations.claudeConfiguration.path
+    )
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o644],
+        ofItemAtPath: locations.codexConfiguration.path
+    )
 
     let first = try HookInstaller.install(at: locations)
     try require(!first.changed.isEmpty, "First install changed nothing")
@@ -353,6 +372,18 @@ func testHookInstaller() throws {
     try require(codexHooks["PostToolUse"] != nil, "Codex tool completion hook missing")
     try require(claudeHooks["PostToolUseFailure"] != nil, "Claude tool failure hook missing")
     try require(claudeHooks["Notification"] != nil, "Claude notification hook missing")
+    let installedCodexMode = try unwrap(
+        FileManager.default.attributesOfItem(atPath: locations.codexConfiguration.path)[.posixPermissions]
+            as? NSNumber,
+        "Installed Codex config permissions missing"
+    )
+    let installedClaudeMode = try unwrap(
+        FileManager.default.attributesOfItem(atPath: locations.claudeConfiguration.path)[.posixPermissions]
+            as? NSNumber,
+        "Installed Claude config permissions missing"
+    )
+    try require(installedCodexMode.intValue & 0o777 == 0o644, "Codex config permissions changed")
+    try require(installedClaudeMode.intValue & 0o777 == 0o640, "Claude config permissions changed")
     let piExtension = try String(contentsOf: locations.piExtension, encoding: .utf8)
     try require(piExtension.contains("tool_execution_start"), "Pi tool start hook missing")
     try require(piExtension.contains("before_agent_start"), "Pi task preview hook missing")
@@ -370,6 +401,7 @@ func testHookInstaller() throws {
     try require(NSDictionary(dictionary: finalClaude).isEqual(to: original), "Claude config did not round trip")
     try require(!FileManager.default.fileExists(atPath: locations.piExtension.path), "Pi extension remains")
     try require(!FileManager.default.fileExists(atPath: locations.installedReporter.path), "Reporter remains")
+    try require(!FileManager.default.fileExists(atPath: locations.supportDirectory.path), "Support directory remains")
 }
 
 func testInstallRollback() throws {
@@ -428,6 +460,43 @@ func testInstallRollback() throws {
     }
 }
 
+func testCleanUninstall() throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let reporter = root.appendingPathComponent("source-reporter")
+    try Data("reporter".utf8).write(to: reporter)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reporter.path)
+    let home = root.appendingPathComponent("home")
+    let locations = InstallLocations(home: home, reporterSource: reporter)
+
+    let untouched = try HookInstaller.uninstall(at: locations)
+    try require(untouched.changed.isEmpty, "Uninstall changed a home without CodeWindow hooks")
+
+    _ = try HookInstaller.install(at: locations)
+    let legacyCodexBackup = locations.codexConfiguration
+        .deletingLastPathComponent()
+        .appendingPathComponent("hooks.json.codewindow-backup")
+    let legacyClaudeBackup = locations.claudeConfiguration
+        .deletingLastPathComponent()
+        .appendingPathComponent("settings.json.codewindow-backup-old")
+    try Data("legacy".utf8).write(to: legacyCodexBackup)
+    try Data("legacy".utf8).write(to: legacyClaudeBackup)
+
+    _ = try HookInstaller.uninstall(at: locations)
+    for url in [
+        locations.codexConfiguration,
+        locations.claudeConfiguration,
+        locations.piExtension,
+        locations.installedReporter,
+        locations.supportDirectory,
+        legacyCodexBackup,
+        legacyClaudeBackup,
+    ] {
+        try require(!FileManager.default.fileExists(atPath: url.path), "Uninstall left \(url.lastPathComponent)")
+    }
+    try require(!HookInstaller.isInstalled(at: locations), "Fresh uninstall still reports installed")
+}
+
 func testForeignPiExtension() throws {
     let root = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -483,11 +552,13 @@ func readJSON(_ url: URL) throws -> [String: Any] {
 let tests: [(String, () throws -> Void)] = [
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),
+    ("app versions", testAppVersions),
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
     ("terminal application ownership", testApplicationOwnership),
     ("hook installer", testHookInstaller),
     ("install rollback", testInstallRollback),
+    ("clean uninstall", testCleanUninstall),
     ("foreign Pi extension", testForeignPiExtension),
     ("unexpected hook structure", testUnexpectedHookStructure),
 ]

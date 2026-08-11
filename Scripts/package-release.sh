@@ -10,6 +10,14 @@ checksum="$archive.sha256"
 temporary_archive="$archive.tmp"
 temporary_checksum="$checksum.tmp"
 
+if /usr/bin/git -C "$repo_dir" diff --quiet \
+    && /usr/bin/git -C "$repo_dir" diff --cached --quiet \
+    && current_tag=$(/usr/bin/git -C "$repo_dir" describe --tags --exact-match 2>/dev/null) \
+    && [[ "$current_tag" != "v$version" ]]; then
+    print -u2 -- "Release tag $current_tag does not match app version $version"
+    exit 1
+fi
+
 "$repo_dir/Scripts/build-app.sh" --universal
 
 for executable in \

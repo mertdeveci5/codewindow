@@ -1,0 +1,19 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Test core behavior
+        run: swift run CodeWindowTests
+      - name: Build and verify release
+        run: ./Scripts/package-release.sh

@@ -19,7 +19,7 @@ The release archive includes code for Apple silicon and Intel Macs.
 
 ## Install the preview release
 
-1. Download `CodeWindow-v0.1.1-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.2-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the ZIP file.
 3. Move `CodeWindow.app` to the Applications folder.
 4. Right-click the app and choose Open.
@@ -48,7 +48,7 @@ Run the installer again after replacing CodeWindow with a newer version. This up
 
 ## Show, hide, and quit
 
-CodeWindow automatically hides while you are looking at the terminal that owns a connected agent. It appears again when another app becomes active. Sessions that still need hook setup do not trigger automatic hiding, so the setup menu remains available.
+CodeWindow automatically hides while you are looking at the terminal that owns a detected agent. It appears again when another app becomes active. This also works before hooks are installed.
 
 Right-click the panel and choose Hide CodeWindow to remove the panel without stopping its session tracking. Open CodeWindow again from Applications, Finder, or Spotlight to show it again.
 
@@ -58,9 +58,15 @@ Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeW
 open -a CodeWindow
 ```
 
+## Updates
+
+CodeWindow checks the public GitHub Releases API once when it opens. If a newer version exists, the panel briefly shows an update notice. Right-click the panel and choose Check for Updates to open the verified release page.
+
+The app does not download or replace executable code. Fully automatic installation will be added with Sparkle after releases use Apple Developer ID signing and notarization. This keeps the preview updater small and avoids treating an ad hoc signature as a security identity.
+
 ## Remove CodeWindow
 
-Run this before deleting the app:
+Quit CodeWindow, then run this before deleting the app:
 
 ```sh
 "/Applications/CodeWindow.app/Contents/Helpers/codewindow-install" uninstall
@@ -83,6 +89,8 @@ A state file contains:
 The preview can contain part of a task, command, or selected tool argument. CodeWindow only considers a small list of useful fields such as paths, queries, URLs, and tool targets. It removes full file paths, strips URL credentials and query strings, and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
 
 CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
+
+The update check sends a normal HTTPS request to GitHub containing the app version and standard network metadata such as the user's IP address. No session or agent activity is included.
 
 The app watches that directory for changes. A fallback process scan runs every five seconds when the panel is empty and every fifteen seconds when a session is present. The scan finds agent sessions that have not loaded the hooks.
 

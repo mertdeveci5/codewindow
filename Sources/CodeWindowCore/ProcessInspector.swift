@@ -46,10 +46,36 @@ public enum ProcessInspector {
         var pid = initialPID
 
         for _ in 0..<16 where pid > 1 {
-            if agentKind(executablePath: executablePath(pid: pid)) == agent, let stamp = stamp(pid: pid) {
-                return stamp
-            }
             guard let info = bsdInfo(pid: pid) else { return nil }
+            let process = ProcessStamp(
+                pid: pid,
+                startedAtSeconds: UInt64(info.pbi_start_tvsec),
+                startedAtMicroseconds: UInt64(info.pbi_start_tvusec)
+            )
+            if agentKind(executablePath: executablePath(pid: pid)) == agent {
+                return process
+            }
+            pid = Int32(info.pbi_ppid)
+        }
+        return nil
+    }
+
+    /// npm-installed agents run inside Node instead of an agent-named binary.
+    public static func findNodeProcess(startingAt initialPID: Int32 = getppid()) -> ProcessStamp? {
+        var pid = initialPID
+
+        for _ in 0..<16 where pid > 1 {
+            guard let info = bsdInfo(pid: pid) else { return nil }
+            let executable = URL(fileURLWithPath: executablePath(pid: pid))
+                .lastPathComponent
+                .lowercased()
+            if executable == "node" || executable == "nodejs" {
+                return ProcessStamp(
+                    pid: pid,
+                    startedAtSeconds: UInt64(info.pbi_start_tvsec),
+                    startedAtMicroseconds: UInt64(info.pbi_start_tvusec)
+                )
+            }
             pid = Int32(info.pbi_ppid)
         }
         return nil

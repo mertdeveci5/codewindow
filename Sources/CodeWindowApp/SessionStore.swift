@@ -16,8 +16,12 @@ final class SessionStore: ObservableObject {
     private let discoveryQueue = DispatchQueue(label: "dev.codewindow.process-discovery", qos: .utility)
     private var isDiscovering = false
 
-    init() throws {
-        directory = try StateFiles.directory()
+    init(directory: URL? = nil) throws {
+        if let directory {
+            self.directory = directory
+        } else {
+            self.directory = try StateFiles.directory()
+        }
         refresh()
         watchDirectory()
         watchForTerminalAgents()

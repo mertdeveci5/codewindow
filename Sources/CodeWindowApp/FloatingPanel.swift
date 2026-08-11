@@ -48,12 +48,7 @@ final class FloatingPanel: NSPanel {
         )
 
         if let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
-            let minimumX = visibleFrame.minX + PanelMetrics.screenMargin
-            let minimumY = visibleFrame.minY + PanelMetrics.screenMargin
-            let maximumX = max(minimumX, visibleFrame.maxX - frame.width - PanelMetrics.screenMargin)
-            let maximumY = max(minimumY, visibleFrame.maxY - frame.height - PanelMetrics.screenMargin)
-            nextOrigin.x = min(max(nextOrigin.x, minimumX), maximumX)
-            nextOrigin.y = min(max(nextOrigin.y, minimumY), maximumY)
+            nextOrigin = constrainedOrigin(nextOrigin, in: visibleFrame)
         }
 
         guard nextOrigin != currentOrigin else { return nil }
@@ -64,9 +59,26 @@ final class FloatingPanel: NSPanel {
         )
     }
 
+    func constrainToVisibleArea() {
+        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+        guard !visibleFrames.contains(where: { $0.contains(frame) }),
+              let target = visibleFrames.max(by: {
+                  $0.intersection(frame).area < $1.intersection(frame).area
+              }) ?? NSScreen.main?.visibleFrame
+        else { return }
+
+        let origin = constrainedOrigin(frame.origin, in: target)
+        if origin != frame.origin { setFrameOrigin(origin) }
+    }
+
     override func close() {
         releaseCursor()
         super.close()
+    }
+
+    override func orderOut(_ sender: Any?) {
+        releaseCursor()
+        super.orderOut(sender)
     }
 
     private func captureCursor(movingBy movement: NSPoint) {
@@ -78,10 +90,14 @@ final class FloatingPanel: NSPanel {
         }
 
         // AppKit screen coordinates grow upward. Quartz cursor coordinates grow downward.
-        _ = CGWarpMouseCursorPosition(CGPoint(
+        let result = CGWarpMouseCursorPosition(CGPoint(
             x: cursorPosition.x + movement.x,
             y: cursorPosition.y - movement.y
         ))
+        guard result == .success else {
+            releaseCursor()
+            return
+        }
 
         cursorRevealWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -98,4 +114,19 @@ final class FloatingPanel: NSPanel {
         _ = CGDisplayShowCursor(CGMainDisplayID())
         isCursorCaptured = false
     }
+
+    private func constrainedOrigin(_ origin: NSPoint, in visibleFrame: NSRect) -> NSPoint {
+        let minimumX = visibleFrame.minX + PanelMetrics.screenMargin
+        let minimumY = visibleFrame.minY + PanelMetrics.screenMargin
+        let maximumX = max(minimumX, visibleFrame.maxX - frame.width - PanelMetrics.screenMargin)
+        let maximumY = max(minimumY, visibleFrame.maxY - frame.height - PanelMetrics.screenMargin)
+        return NSPoint(
+            x: min(max(origin.x, minimumX), maximumX),
+            y: min(max(origin.y, minimumY), maximumY)
+        )
+    }
+}
+
+private extension NSRect {
+    var area: CGFloat { isNull ? 0 : width * height }
 }

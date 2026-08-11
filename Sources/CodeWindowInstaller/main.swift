@@ -24,11 +24,9 @@ do {
         let result = try HookInstaller.install(at: locations)
         print(result.changed.isEmpty ? "CodeWindow hooks are already installed." : "Installed CodeWindow hooks.")
         print("Codex: run /hooks and trust the CodeWindow entries to enable live actions.")
-        for backup in result.backups { print("Backup: \(backup.path)") }
     case "uninstall":
         let result = try HookInstaller.uninstall(at: locations)
         print(result.changed.isEmpty ? "CodeWindow hooks were not installed." : "Uninstalled CodeWindow hooks.")
-        for backup in result.backups { print("Backup: \(backup.path)") }
     case "status":
         print(HookInstaller.isInstalled(at: locations) ? "installed" : "not installed")
     default:

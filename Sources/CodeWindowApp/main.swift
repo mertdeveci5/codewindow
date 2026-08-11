@@ -10,23 +10,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: SessionStore?
     private var sessionsCancellable: AnyCancellable?
     private var isManuallyHidden = false
+    private var didCheckForUpdates = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
 
         do {
-            let store = try SessionStore()
+            let isSmokeTest = CommandLine.arguments.contains("--smoke-test")
+            let smokeDirectory: URL?
+            if isSmokeTest {
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("CodeWindow-smoke-\(UUID().uuidString)", isDirectory: true)
+                smokeDirectory = try StateFiles.directory(environment: ["CODEWINDOW_STATE_DIR": url.path])
+            } else {
+                smokeDirectory = nil
+            }
+
+            let store = try SessionStore(directory: smokeDirectory)
             self.store = store
             let panel = makePanel(store: store)
             self.panel = panel
 
-            if CommandLine.arguments.contains("--smoke-test") {
+            if isSmokeTest {
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
                 let originalOrigin = panel.frame.origin
                 let trackpadMovement = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
                 let trackpadMoveWorks = trackpadMovement == NSPoint(x: -8, y: 0)
+                let movedOrigin = panel.frame.origin
+                panel.constrainToVisibleArea()
+                let validPositionWasPreserved = panel.frame.origin == movedOrigin
+                if let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+                    panel.setFrameOrigin(NSPoint(x: visibleFrame.maxX + 100, y: visibleFrame.maxY + 100))
+                }
+                panel.constrainToVisibleArea()
+                let offscreenPositionWasConstrained = NSScreen.screens.contains {
+                    $0.visibleFrame.contains(panel.frame)
+                }
                 panel.setFrameOrigin(originalOrigin)
                 let passed = panel.level == .floating
                     && behavior.contains(.canJoinAllSpaces)
@@ -36,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && AgentLogoAssets.allAvailable
                     && hasAppIcon
                     && trackpadMoveWorks
+                    && validPositionWasPreserved
+                    && offscreenPositionWasConstrained
                 print(
                     "floating=\(panel.level == .floating) "
                         + "allSpaces=\(behavior.contains(.canJoinAllSpaces)) "
@@ -44,8 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "width=\(Int(panel.frame.width)) "
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
                         + "trackpad=\(trackpadMoveWorks) "
+                        + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
                 )
+                if let smokeDirectory {
+                    try? FileManager.default.removeItem(at: smokeDirectory)
+                }
                 exit(passed ? EXIT_SUCCESS : EXIT_FAILURE)
             }
 
@@ -109,8 +136,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.resize(panel: panel, to: height)
             },
             installHooks: { [weak self] in
-                self?.installHooks()
-                    ?? SetupNotice(message: "setup failed · use the Terminal command", succeeded: false)
+                guard let self else {
+                    return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
+                }
+                return await self.installHooks()
+            },
+            checkForUpdates: { [weak self] userInitiated in
+                guard let self else { return nil }
+                return await self.checkForUpdates(userInitiated: userInitiated)
             },
             hidePanel: { [weak self] in
                 self?.hidePanelManually()
@@ -147,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenParametersDidChange() {
         guard let panel else { return }
-        position(panel: panel)
+        panel.constrainToVisibleArea()
     }
 
     @objc private func frontmostApplicationDidChange() {
@@ -161,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updatePanelVisibility() {
         guard let panel, let store else { return }
-        let shouldHide = isManuallyHidden || frontmostApplicationOwnsReportedSession(store.sessions)
+        let shouldHide = isManuallyHidden || frontmostApplicationOwnsSession(store.sessions)
         if shouldHide, panel.isVisible {
             panel.orderOut(nil)
         } else if !shouldHide, !panel.isVisible {
@@ -169,11 +202,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func frontmostApplicationOwnsReportedSession(_ sessions: [PresentedSession]) -> Bool {
+    private func frontmostApplicationOwnsSession(_ sessions: [PresentedSession]) -> Bool {
         guard let application = NSWorkspace.shared.frontmostApplication else { return false }
         let bundlePath = application.bundleURL?.standardizedFileURL.path
         return sessions.contains { session in
-            !session.isDiagnostic && ProcessInspector.process(
+            ProcessInspector.process(
                 session.process,
                 belongsToApplicationPID: application.processIdentifier,
                 bundlePath: bundlePath
@@ -181,25 +214,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func installHooks() -> SetupNotice {
+    private func installHooks() async -> PanelNotice {
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
-        let output = Pipe()
+        return await Task.detached(priority: .userInitiated) {
+            Self.runInstaller(at: helper)
+        }.value
+    }
+
+    nonisolated private static func runInstaller(at helper: URL) -> PanelNotice {
         let process = Process()
         process.executableURL = helper
         process.arguments = ["install"]
-        process.standardOutput = output
-        process.standardError = output
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
             process.waitUntilExit()
-            _ = output.fileHandleForReading.readDataToEndOfFile()
             if process.terminationStatus == 0 {
-                return SetupNotice(message: "hooks installed · restart agents", succeeded: true)
+                return PanelNotice(message: "hooks installed · restart agents", succeeded: true)
             }
-            return SetupNotice(message: "setup failed · use the Terminal command", succeeded: false)
+            return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
         } catch {
-            return SetupNotice(message: "setup failed · use the Terminal command", succeeded: false)
+            return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
+        }
+    }
+
+    private func checkForUpdates(userInitiated: Bool) async -> PanelNotice? {
+        if !userInitiated {
+            guard !didCheckForUpdates else { return nil }
+            didCheckForUpdates = true
+        }
+
+        let currentVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? ""
+        switch await ReleaseChecker.check(currentVersion: currentVersion) {
+        case .current:
+            return userInitiated
+                ? PanelNotice(message: "CodeWindow is up to date", succeeded: true)
+                : nil
+        case let .available(version, pageURL):
+            if userInitiated {
+                let opened = NSWorkspace.shared.open(pageURL)
+                return PanelNotice(
+                    message: opened ? "opening CodeWindow \(version)" : "could not open the release",
+                    succeeded: opened
+                )
+            }
+            return PanelNotice(message: "CodeWindow \(version) is available · check menu", succeeded: true)
+        case .failed:
+            return userInitiated
+                ? PanelNotice(message: "could not check for updates", succeeded: false)
+                : nil
         }
     }
 }

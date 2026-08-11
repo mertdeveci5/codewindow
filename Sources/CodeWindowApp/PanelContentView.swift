@@ -2,7 +2,7 @@ import AppKit
 import CodeWindowCore
 import SwiftUI
 
-struct SetupNotice: Equatable {
+struct PanelNotice: Equatable, Sendable {
     let id = UUID()
     let message: String
     let succeeded: Bool
@@ -14,11 +14,12 @@ struct SetupNotice: Equatable {
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     let reportHeight: (CGFloat) -> Void
-    let installHooks: () -> SetupNotice
+    let installHooks: () async -> PanelNotice
+    let checkForUpdates: (_ userInitiated: Bool) async -> PanelNotice?
     let hidePanel: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var setupNotice: SetupNotice?
+    @State private var notice: PanelNotice?
 
     var body: some View {
         stack
@@ -38,10 +39,20 @@ struct PanelContentView: View {
             }
             .onPreferenceChange(PanelHeightKey.self, perform: reportHeight)
             .contextMenu {
-                Button("Install or update agent hooks…", action: showInstallResult)
+                Button("Install or update agent hooks…") {
+                    Task { show(await installHooks()) }
+                }
+                Button("Check for Updates…") {
+                    Task {
+                        if let notice = await checkForUpdates(true) { show(notice) }
+                    }
+                }
                 Divider()
                 Button("Hide CodeWindow", action: hidePanel)
                 Button("Quit CodeWindow") { NSApplication.shared.terminate(nil) }
+            }
+            .task {
+                if let notice = await checkForUpdates(false) { show(notice) }
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("CodeWindow, agent activity")
@@ -49,8 +60,8 @@ struct PanelContentView: View {
 
     private var stack: some View {
         VStack(spacing: 0) {
-            if let setupNotice {
-                SetupNoticeRow(notice: setupNotice)
+            if let notice {
+                NoticeRow(notice: notice)
                     .transition(.opacity)
             }
             if store.sessions.isEmpty {
@@ -68,15 +79,14 @@ struct PanelContentView: View {
             }
         }
         .animation(motion, value: store.sessions.map(\.id))
-        .animation(motion, value: setupNotice)
+        .animation(motion, value: notice)
     }
 
-    private func showInstallResult() {
-        let notice = installHooks()
-        setupNotice = notice
+    private func show(_ notice: PanelNotice) {
+        self.notice = notice
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(6)) {
-            if setupNotice?.id == notice.id {
-                setupNotice = nil
+            if self.notice?.id == notice.id {
+                self.notice = nil
             }
         }
     }
@@ -93,8 +103,8 @@ struct PanelContentView: View {
 
 // MARK: - Rows
 
-private struct SetupNoticeRow: View {
-    let notice: SetupNotice
+private struct NoticeRow: View {
+    let notice: PanelNotice
 
     var body: some View {
         HStack(spacing: PanelMetrics.glyphGap) {

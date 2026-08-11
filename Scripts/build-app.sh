@@ -31,11 +31,18 @@ if [[ "$build_mode" == "--universal" ]]; then
     arm_products="$arm_scratch/arm64-apple-macosx/release"
     intel_products="$intel_scratch/x86_64-apple-macosx/release"
 else
-    swift build --package-path "$repo_dir" -c release
+    for product in $products; do
+        swift build \
+            --package-path "$repo_dir" \
+            -c release \
+            --product "$product"
+    done
     host_products="$repo_dir/.build/release"
 fi
 
-/bin/rm -rf "$app_dir"
+if [[ -e "$app_dir" || -L "$app_dir" ]]; then
+    /usr/bin/find "$app_dir" -depth -delete
+fi
 /bin/mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Helpers" "$app_dir/Contents/Resources/AgentLogos"
 /bin/cp "$repo_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 /bin/cp "$repo_dir/Resources/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
