@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import CodeWindowCore
 import Darwin
 import SwiftUI
 
@@ -6,6 +8,8 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel?
     private var store: SessionStore?
+    private var sessionsCancellable: AnyCancellable?
+    private var isManuallyHidden = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -45,7 +49,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exit(passed ? EXIT_SUCCESS : EXIT_FAILURE)
             }
 
-            panel.orderFrontRegardless()
+            sessionsCancellable = store.$sessions.sink { [weak self] _ in
+                self?.updatePanelVisibility()
+            }
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(frontmostApplicationDidChange),
+                name: NSWorkspace.didActivateApplicationNotification,
+                object: nil
+            )
+            updatePanelVisibility()
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(screenParametersDidChange),
@@ -62,7 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        panel?.orderFrontRegardless()
+        isManuallyHidden = false
+        updatePanelVisibility()
         return true
     }
 
@@ -99,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ?? SetupNotice(message: "setup failed · use the Terminal command", succeeded: false)
             },
             hidePanel: { [weak self] in
-                self?.panel?.orderOut(nil)
+                self?.hidePanelManually()
             }
         )
         panel.contentView = NSHostingView(rootView: content)
@@ -134,6 +148,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func screenParametersDidChange() {
         guard let panel else { return }
         position(panel: panel)
+    }
+
+    @objc private func frontmostApplicationDidChange() {
+        updatePanelVisibility()
+    }
+
+    private func hidePanelManually() {
+        isManuallyHidden = true
+        panel?.orderOut(nil)
+    }
+
+    private func updatePanelVisibility() {
+        guard let panel, let store else { return }
+        let shouldHide = isManuallyHidden || frontmostApplicationOwnsReportedSession(store.sessions)
+        if shouldHide, panel.isVisible {
+            panel.orderOut(nil)
+        } else if !shouldHide, !panel.isVisible {
+            panel.orderFrontRegardless()
+        }
+    }
+
+    private func frontmostApplicationOwnsReportedSession(_ sessions: [PresentedSession]) -> Bool {
+        guard let application = NSWorkspace.shared.frontmostApplication else { return false }
+        let bundlePath = application.bundleURL?.standardizedFileURL.path
+        return sessions.contains { session in
+            !session.isDiagnostic && ProcessInspector.process(
+                session.process,
+                belongsToApplicationPID: application.processIdentifier,
+                bundlePath: bundlePath
+            )
+        }
     }
 
     private func installHooks() -> SetupNotice {

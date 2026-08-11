@@ -4,6 +4,8 @@ CodeWindow is a small Mac app that shows what terminal coding agents are doing. 
 
 The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, a web page, a tool target, or a request for permission.
 
+When the frontmost terminal app owns one of the connected agent processes, CodeWindow hides itself. Switch to another app or Space and the panel appears again, like a video entering picture-in-picture mode. Process ancestry is used instead of a fixed terminal list, so this also works with integrated terminals when their process tree is connected.
+
 Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. You can also move the panel by clicking and dragging the background.
 
 CodeWindow uses SwiftUI and AppKit. It does not use Electron, a web view, a background daemon, or a database.
@@ -45,6 +47,8 @@ If a row says `hooks not reporting`, that session has not loaded the hooks yet. 
 Run the installer again after replacing CodeWindow with a newer version. This updates the small reporter used by the hooks.
 
 ## Show, hide, and quit
+
+CodeWindow automatically hides while you are looking at the terminal that owns a connected agent. It appears again when another app becomes active. Sessions that still need hook setup do not trigger automatic hiding, so the setup menu remains available.
 
 Right-click the panel and choose Hide CodeWindow to remove the panel without stopping its session tracking. Open CodeWindow again from Applications, Finder, or Spotlight to show it again.
 

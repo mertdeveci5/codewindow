@@ -285,6 +285,43 @@ func testHighestAgentPIDs() throws {
     )
 }
 
+func testApplicationOwnership() throws {
+    let parentByPID: [Int32: Int32] = [
+        300: 200,
+        200: 100,
+        100: 1,
+        400: 350,
+        350: 1,
+        500: 1,
+        600: 601,
+        601: 600,
+    ]
+    let executableByPID: [Int32: String] = [
+        350: "/Applications/Warp.app/Contents/Helpers/warp-terminal-server",
+        500: "/Applications/Warp.app.backup/Contents/MacOS/Warp",
+    ]
+    func belongs(processPID: Int32, applicationPID: Int32, bundlePath: String? = nil) -> Bool {
+        ProcessInspector.processBelongsToApplication(
+            processPID: processPID,
+            applicationPID: applicationPID,
+            bundlePath: bundlePath,
+            parentPID: { parentByPID[$0] },
+            executablePath: { executableByPID[$0] ?? "" }
+        )
+    }
+
+    try require(belongs(processPID: 300, applicationPID: 100), "Direct terminal ancestry was not matched")
+    try require(
+        belongs(processPID: 400, applicationPID: 999, bundlePath: "/Applications/Warp.app"),
+        "Bundled terminal helper was not matched"
+    )
+    try require(
+        !belongs(processPID: 500, applicationPID: 100, bundlePath: "/Applications/Warp.app"),
+        "Similar application path produced a false match"
+    )
+    try require(!belongs(processPID: 600, applicationPID: 100), "Cyclic ancestry did not terminate")
+}
+
 func testHookInstaller() throws {
     let root = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -448,6 +485,7 @@ let tests: [(String, () throws -> Void)] = [
     ("state files", testStateFiles),
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
+    ("terminal application ownership", testApplicationOwnership),
     ("hook installer", testHookInstaller),
     ("install rollback", testInstallRollback),
     ("foreign Pi extension", testForeignPiExtension),

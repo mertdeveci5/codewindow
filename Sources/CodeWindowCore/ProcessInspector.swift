@@ -27,6 +27,21 @@ public enum ProcessInspector {
         stamp(pid: expected.pid) == expected
     }
 
+    public static func process(
+        _ process: ProcessStamp,
+        belongsToApplicationPID applicationPID: Int32,
+        bundlePath: String?
+    ) -> Bool {
+        guard isCurrent(process) else { return false }
+        return processBelongsToApplication(
+            processPID: process.pid,
+            applicationPID: applicationPID,
+            bundlePath: bundlePath,
+            parentPID: parentPID(pid:),
+            executablePath: executablePath(pid:)
+        )
+    }
+
     public static func findAgentProcess(agent: AgentKind, startingAt initialPID: Int32 = getppid()) -> ProcessStamp? {
         var pid = initialPID
 
@@ -96,6 +111,29 @@ public enum ProcessInspector {
         })
     }
 
+    static func processBelongsToApplication(
+        processPID: Int32,
+        applicationPID: Int32,
+        bundlePath: String?,
+        parentPID: (Int32) -> Int32?,
+        executablePath: (Int32) -> String
+    ) -> Bool {
+        var pid = processPID
+        var visited: Set<Int32> = []
+
+        while pid > 1, visited.insert(pid).inserted {
+            if pid == applicationPID { return true }
+            if let bundlePath,
+               executablePath(pid).hasPrefix(bundlePath + "/Contents/")
+            {
+                return true
+            }
+            guard let parent = parentPID(pid) else { return false }
+            pid = parent
+        }
+        return false
+    }
+
     private static func bsdInfo(pid: Int32) -> proc_bsdinfo? {
         var info = proc_bsdinfo()
         let size = MemoryLayout<proc_bsdinfo>.stride
@@ -103,6 +141,22 @@ public enum ProcessInspector {
             proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(size))
         }
         return result == size ? info : nil
+    }
+
+    private static func parentPID(pid: Int32) -> Int32? {
+        if let info = bsdInfo(pid: pid) {
+            return Int32(info.pbi_ppid)
+        }
+
+        // Terminal process trees commonly include the root-owned `login`
+        // executable. macOS withholds its full BSD record from regular apps,
+        // but still exposes the short record that contains its parent PID.
+        var info = proc_bsdshortinfo()
+        let size = MemoryLayout<proc_bsdshortinfo>.stride
+        let result = withUnsafeMutablePointer(to: &info) {
+            proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, $0, Int32(size))
+        }
+        return result == size ? Int32(info.pbsi_ppid) : nil
     }
 
     private static func executablePath(pid: Int32) -> String {
