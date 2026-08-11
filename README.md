@@ -2,7 +2,7 @@
 
 CodeWindow is a small Mac app that shows what terminal coding agents are doing. It supports Codex CLI, Claude Code, and Pi.
 
-The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, or a request for permission.
+The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, a web page, a tool target, or a request for permission.
 
 Hover over the panel and move two fingers on the trackpad to reposition it without clicking. You can also move it by clicking and dragging the background.
 
@@ -68,9 +68,9 @@ A state file contains:
 - the current activity
 - a preview of up to 96 characters, when one is available
 
-The preview can contain part of a task or command. CodeWindow removes full file paths and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
+The preview can contain part of a task, command, or selected tool argument. CodeWindow only considers a small list of useful fields such as paths, queries, URLs, and tool targets. It removes full file paths, strips URL credentials and query strings, and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
 
-CodeWindow does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
+CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
 
 The app watches that directory for changes. A fallback process scan runs every five seconds when the panel is empty and every fifteen seconds when a session is present. The scan finds agent sessions that have not loaded the hooks.
 

@@ -109,6 +109,89 @@ func testHookPayloads() throws {
     )
     try require(readState.actionPreview == "PanelContentView.swift", "Read preview should contain only the basename")
 
+    let freeformCommandState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "exec",
+            "tool_input": #"const result = await tools.exec_command({cmd:"TOKEN=private-value swift test"});"#,
+        ]).state(agent: .codex, process: process),
+        "Codex freeform command preview missing"
+    )
+    try require(freeformCommandState.action == .runningCommand, "Codex exec tool should be a command")
+    try require(
+        freeformCommandState.actionPreview == "TOKEN=•••• swift test",
+        "Codex freeform command was not extracted or sanitized"
+    )
+
+    let webSearchState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "web.run",
+            "tool_input": ["search_query": [["q": "native macOS floating panel"]]],
+        ]).state(agent: .codex, process: process),
+        "Nested web search preview missing"
+    )
+    try require(webSearchState.action == .searching, "Nested query should be shown as a search")
+    try require(webSearchState.actionPreview == "native macOS floating panel", "Nested query preview mismatch")
+
+    let navigationState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "steel_navigate",
+            "tool_input": ["url": "https://person:password@example.com/docs?page=private#token"],
+        ]).state(agent: .claude, process: process),
+        "Browser navigation preview missing"
+    )
+    try require(navigationState.action == .usingTool, "Navigation tool classification mismatch")
+    try require(navigationState.actionPreview == "example.com/docs", "URL credentials or query were not removed")
+
+    let directoryState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "event": "tool_execution_start",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "ls",
+            "tool_input": ["path": "/Users/person/private/Sources"],
+        ]).state(agent: .pi, process: process),
+        "Directory listing preview missing"
+    )
+    try require(directoryState.action == .readingFile, "Directory listing classification mismatch")
+    try require(directoryState.actionPreview == "Sources", "Directory preview should contain only the basename")
+
+    let patchState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "apply_patch",
+            "tool_input": "*** Begin Patch\n*** Update File: /Users/person/private/HookPayload.swift\nSENTINEL_PATCH_CONTENT",
+        ]).state(agent: .codex, process: process),
+        "Patch preview missing"
+    )
+    try require(patchState.actionPreview == "HookPayload.swift", "Patch preview should show only the file name")
+    let patchText = try unwrap(String(data: JSONEncoder().encode(patchState), encoding: .utf8), "Patch state is not UTF-8")
+    try require(!patchText.contains("SENTINEL_PATCH_CONTENT"), "Patch content leaked into state")
+
+    let genericToolState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "custom_tool",
+            "tool_input": "SENTINEL_TOOL_CONTENT",
+        ]).state(agent: .claude, process: process),
+        "Generic tool preview missing"
+    )
+    try require(genericToolState.actionPreview == "custom tool", "Generic tool name was not made readable")
+    let genericText = try unwrap(String(data: JSONEncoder().encode(genericToolState), encoding: .utf8), "Generic state is not UTF-8")
+    try require(!genericText.contains("SENTINEL_TOOL_CONTENT"), "Unapproved tool input leaked into state")
+
     for event in ["message_update", "irrelevant_event"] {
         let payload = try HookPayload(json: ["session_id": "id", "event": event])
         try require(payload.state(agent: .claude, process: process) == nil, "\(event) should be ignored")

@@ -10,6 +10,7 @@ public struct HookPayload: Sendable {
     private let commandText: String?
     private let pathText: String?
     private let queryText: String?
+    private let toolSubjectText: String?
 
     public init(json: [String: Any]) throws {
         guard let sessionID = Self.string(in: json, keys: ["session_id", "sessionId"]),
@@ -23,15 +24,27 @@ public struct HookPayload: Sendable {
         self.externalSessionID = sessionID
         self.eventName = eventName
         self.cwd = Self.string(in: json, keys: ["cwd"]) ?? FileManager.default.currentDirectoryPath
-        self.toolName = Self.string(in: json, keys: ["tool_name", "toolName"])
+        let toolName = Self.string(in: json, keys: ["tool_name", "toolName"])
+        self.toolName = toolName
         self.notificationType = Self.string(in: json, keys: ["notification_type", "notificationType"])
         self.submittedText = Self.string(in: json, keys: ["user_prompt", "userPrompt", "prompt"])
 
-        let toolInput = Self.dictionary(in: json, keys: ["tool_input", "toolInput", "args", "input"])
+        let toolInputValue = Self.value(in: json, keys: ["tool_input", "toolInput", "args", "input"])
+        let toolInput = toolInputValue as? [String: Any] ?? [:]
+        let rawToolInput = toolInputValue as? String
+        let isCommandTool = Self.isCommandTool(toolName)
         self.commandText = Self.stringOrArray(in: toolInput, keys: ["command", "cmd"])
             ?? Self.string(in: json, keys: ["command", "cmd"])
-        self.pathText = Self.string(in: toolInput, keys: ["file_path", "filePath", "path", "notebook_path"])
-        self.queryText = Self.string(in: toolInput, keys: ["pattern", "query", "search"])
+            ?? (isCommandTool ? Self.command(inFreeformInput: rawToolInput) ?? rawToolInput : nil)
+        self.pathText = Self.firstString(
+            in: toolInputValue,
+            keys: ["file_path", "filePath", "path", "notebook_path", "notebookPath", "file"]
+        )
+        self.queryText = Self.firstString(
+            in: toolInputValue,
+            keys: ["pattern", "query", "search", "q", "selector"]
+        )
+        self.toolSubjectText = Self.toolSubject(in: toolInputValue, toolName: toolName)
     }
 
     public func state(
@@ -61,7 +74,7 @@ public struct HookPayload: Sendable {
         case "userpromptsubmit", "beforeagentstart", "agentstart":
             return (.working, .thinking)
         case "pretooluse", "toolcall", "toolexecutionstart":
-            return (.working, Self.safeAction(for: toolName))
+            return (.working, Self.safeAction(for: toolName, hasQuery: queryText != nil))
         case "posttooluse", "toolresult", "toolexecutionend":
             return (.working, .thinking)
         case "permissionrequest":
@@ -91,32 +104,40 @@ public struct HookPayload: Sendable {
     private func actionPreview(for action: SafeAction) -> String? {
         switch action {
         case .runningCommand:
-            return Self.preview(commandText)
+            return Self.preview(commandText ?? toolSubjectText)
         case .editingFile, .readingFile:
-            guard let pathText else { return nil }
-            return Self.preview(URL(fileURLWithPath: pathText).lastPathComponent)
+            return Self.preview(pathText.map(Self.fileSubject) ?? toolSubjectText)
         case .searching:
-            return Self.preview(queryText)
-        case .waiting, .thinking, .usingTool, .awaitingPermission, .failed:
+            return Self.preview(queryText ?? toolSubjectText)
+        case .usingTool:
+            return Self.preview(toolSubjectText)
+        case .waiting, .thinking, .awaitingPermission, .failed:
             return nil
         }
     }
 
-    private static func safeAction(for toolName: String?) -> SafeAction {
+    private static func safeAction(for toolName: String?, hasQuery: Bool) -> SafeAction {
         let tool = normalized(toolName ?? "")
-        if tool.contains("bash") || tool.contains("shell") || tool.contains("exec") {
+        if isCommandTool(toolName) {
             return .runningCommand
         }
         if tool.contains("edit") || tool.contains("write") || tool.contains("patch") {
             return .editingFile
         }
-        if tool.contains("read") || tool.contains("view") {
+        if tool.contains("read") || tool.contains("view") || tool == "ls" {
             return .readingFile
         }
-        if tool.contains("search") || tool.contains("grep") || tool.contains("find") || tool.contains("glob") {
+        if hasQuery || tool.contains("search") || tool.contains("query") || tool.contains("grep")
+            || tool.contains("find") || tool.contains("glob")
+        {
             return .searching
         }
         return .usingTool
+    }
+
+    private static func isCommandTool(_ toolName: String?) -> Bool {
+        let tool = normalized(toolName ?? "")
+        return tool.contains("bash") || tool.contains("shell") || tool.contains("exec")
     }
 
     private static func normalized(_ value: String) -> String {
@@ -130,11 +151,11 @@ public struct HookPayload: Sendable {
         return nil
     }
 
-    private static func dictionary(in json: [String: Any], keys: [String]) -> [String: Any] {
+    private static func value(in json: [String: Any], keys: [String]) -> Any? {
         for key in keys {
-            if let value = json[key] as? [String: Any] { return value }
+            if let value = json[key] { return value }
         }
-        return [:]
+        return nil
     }
 
     private static func stringOrArray(in json: [String: Any], keys: [String]) -> String? {
@@ -143,6 +164,120 @@ public struct HookPayload: Sendable {
             if let values = json[key] as? [String] { return values.joined(separator: " ") }
         }
         return nil
+    }
+
+    private static func firstString(in value: Any?, keys: [String], depth: Int = 0) -> String? {
+        guard depth < 5 else { return nil }
+        if let dictionary = value as? [String: Any] {
+            for key in keys {
+                if let string = dictionary[key] as? String, !string.isEmpty { return string }
+                if let strings = dictionary[key] as? [String], !strings.isEmpty {
+                    return strings.joined(separator: " ")
+                }
+            }
+            for key in dictionary.keys.sorted() {
+                if let string = firstString(in: dictionary[key], keys: keys, depth: depth + 1) {
+                    return string
+                }
+            }
+        } else if let array = value as? [Any] {
+            for item in array {
+                if let string = firstString(in: item, keys: keys, depth: depth + 1) {
+                    return string
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func toolSubject(in input: Any?, toolName: String?) -> String? {
+        if let query = firstString(
+            in: input,
+            keys: ["pattern", "query", "search", "q", "selector", "prompt"]
+        ) {
+            return query
+        }
+        if let path = firstString(
+            in: input,
+            keys: ["file_path", "filePath", "path", "notebook_path", "notebookPath", "file"]
+        ) {
+            return fileSubject(path)
+        }
+        if let url = firstString(in: input, keys: ["url", "uri"]) {
+            return urlSubject(url)
+        }
+        if let target = firstString(
+            in: input,
+            keys: ["task_name", "taskName", "target", "title", "name", "location", "ticker", "ref_id", "refId"]
+        ) {
+            return target
+        }
+        if let rawInput = input as? String {
+            if let patchFile = patchFile(in: rawInput) { return patchFile }
+            if isCommandTool(toolName) {
+                return command(inFreeformInput: rawInput) ?? rawInput
+            }
+        }
+        return toolLabel(toolName)
+    }
+
+    private static func fileSubject(_ path: String) -> String {
+        URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    private static func urlSubject(_ value: String) -> String {
+        guard var components = URLComponents(string: value), components.scheme != nil else {
+            return value
+        }
+        if components.scheme == "file" {
+            return fileSubject(components.path)
+        }
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        let host = components.host ?? ""
+        let subject = host + components.percentEncodedPath
+        return subject.isEmpty ? value : subject
+    }
+
+    private static func patchFile(in input: String) -> String? {
+        let markers = ["*** Update File: ", "*** Add File: ", "*** Delete File: "]
+        for line in input.split(whereSeparator: \.isNewline) {
+            for marker in markers where line.hasPrefix(marker) {
+                return fileSubject(String(line.dropFirst(marker.count)))
+            }
+        }
+        return nil
+    }
+
+    private static func command(inFreeformInput input: String?) -> String? {
+        guard let input,
+              let expression = try? NSRegularExpression(
+                  pattern: #"\bcmd\s*:\s*(\"(?:\\.|[^\"\\])*\")"#
+              ),
+              let match = expression.firstMatch(
+                  in: input,
+                  range: NSRange(input.startIndex..., in: input)
+              ),
+              let captureRange = Range(match.range(at: 1), in: input)
+        else { return nil }
+
+        let quoted = String(input[captureRange])
+        guard let data = "[\(quoted)]".data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else { return nil }
+        return values.first
+    }
+
+    private static func toolLabel(_ toolName: String?) -> String? {
+        guard let toolName, !toolName.isEmpty else { return nil }
+        let separators = CharacterSet(charactersIn: "._-/")
+        return toolName.unicodeScalars
+            .map { separators.contains($0) ? " " : String($0) }
+            .joined()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     /// Keeps state files small and removes common credential shapes before persistence.
