@@ -1,6 +1,6 @@
 # Agent logo sources
 
-- `codex.png`: `icon-codex-dark-color.png` from the official ChatGPT macOS application, resized from 1024 px to 128 px without other modification.
+- `codex.svg`: the [Codex ACP icon](https://cdn.agentclientprotocol.com/registry/v1/latest/codex-acp.svg) published by the Agent Client Protocol registry, with `currentColor` set to white for CodeWindow's dark panel.
 - `claude.svg`: `claude-logo.svg` from Anthropic's official Claude Code editor extension (`anthropic.claude-code`), unchanged apart from XML formatting.
 - `pi.svg`: the official Pi favicon published at <https://pi.dev/favicon.svg>, unchanged apart from compact path formatting and its accessible title.
 

@@ -41,7 +41,7 @@ enum AgentLogoAssets {
         AgentKind.allCases.allSatisfy { image(for: $0) != nil }
     }
 
-    private static let codex = load(name: "codex", fileExtension: "png")
+    private static let codex = load(name: "codex", fileExtension: "svg")
     private static let claude = load(name: "claude", fileExtension: "svg")
     private static let pi = load(name: "pi", fileExtension: "svg")
 
@@ -65,7 +65,8 @@ private extension AgentKind {
 
     var logoPadding: CGFloat {
         switch self {
-        case .codex, .pi: 0
+        case .codex: 3
+        case .pi: 0
         case .claude: 4
         }
     }

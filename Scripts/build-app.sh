@@ -39,7 +39,7 @@ fi
 /bin/mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Helpers" "$app_dir/Contents/Resources/AgentLogos"
 /bin/cp "$repo_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 /bin/cp "$repo_dir/Resources/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
-/bin/cp "$repo_dir/Resources/AgentLogos/codex.png" "$app_dir/Contents/Resources/AgentLogos/codex.png"
+/bin/cp "$repo_dir/Resources/AgentLogos/codex.svg" "$app_dir/Contents/Resources/AgentLogos/codex.svg"
 /bin/cp "$repo_dir/Resources/AgentLogos/claude.svg" "$app_dir/Contents/Resources/AgentLogos/claude.svg"
 /bin/cp "$repo_dir/Resources/AgentLogos/pi.svg" "$app_dir/Contents/Resources/AgentLogos/pi.svg"
 
