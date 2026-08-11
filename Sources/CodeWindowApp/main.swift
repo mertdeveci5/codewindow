@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
+                let originalOrigin = panel.frame.origin
+                let trackpadMoveWorks = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
+                panel.setFrameOrigin(originalOrigin)
                 let passed = panel.level == .floating
                     && behavior.contains(.canJoinAllSpaces)
                     && behavior.contains(.fullScreenAuxiliary)
@@ -27,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && panel.frame.width == PanelMetrics.width
                     && AgentLogoAssets.allAvailable
                     && hasAppIcon
+                    && trackpadMoveWorks
                 print(
                     "floating=\(panel.level == .floating) "
                         + "allSpaces=\(behavior.contains(.canJoinAllSpaces)) "
@@ -34,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "nonactivating=\(panel.styleMask.contains(.nonactivatingPanel)) "
                         + "width=\(Int(panel.frame.width)) "
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
+                        + "trackpad=\(trackpadMoveWorks) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
                 )
                 exit(passed ? EXIT_SUCCESS : EXIT_FAILURE)

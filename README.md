@@ -4,6 +4,8 @@ CodeWindow is a small Mac app that shows what terminal coding agents are doing. 
 
 The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, or a request for permission.
 
+Hover over the panel and move two fingers on the trackpad to reposition it without clicking. You can also move it by clicking and dragging the background.
+
 CodeWindow uses SwiftUI and AppKit. It does not use Electron, a web view, a background daemon, or a database.
 
 ## Requirements
@@ -99,7 +101,7 @@ swift run CodeWindowTests
 ./build/CodeWindow.app/Contents/MacOS/CodeWindow --smoke-test
 ```
 
-The smoke test checks the floating window behavior, all-Spaces support, full-screen support, bundled icons, and panel width. It also reports the session count at launch.
+The smoke test checks the floating window behavior, all-Spaces support, full-screen support, bundled icons, trackpad movement, and panel width. It also reports the session count at launch.
 
 ## Logo sources
 
