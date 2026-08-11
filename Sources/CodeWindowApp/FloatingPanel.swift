@@ -4,6 +4,9 @@ import AppKit
 /// full-screen apps. It never takes key or main status, so clicking or dragging
 /// it never steals focus from the terminal the user is working in.
 final class FloatingPanel: NSPanel {
+    private var cursorRevealWorkItem: DispatchWorkItem?
+    private var isCursorCaptured = false
+
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -19,16 +22,24 @@ final class FloatingPanel: NSPanel {
             // This is a drag gesture, not scrolling. Remove the user's scroll-direction
             // preference so the panel always follows the physical finger movement.
             let directionCorrection: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
-            moveByTrackpad(
+            if let movement = moveByTrackpad(
                 deltaX: event.scrollingDeltaX * directionCorrection,
                 deltaY: event.scrollingDeltaY * directionCorrection
-            )
+            ) {
+                captureCursor(movingBy: movement)
+            }
+        }
+
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled)
+            || !event.momentumPhase.isEmpty
+        {
+            releaseCursor()
         }
     }
 
     @discardableResult
-    func moveByTrackpad(deltaX: CGFloat, deltaY: CGFloat) -> Bool {
-        guard deltaX != 0 || deltaY != 0 else { return false }
+    func moveByTrackpad(deltaX: CGFloat, deltaY: CGFloat) -> NSPoint? {
+        guard deltaX != 0 || deltaY != 0 else { return nil }
 
         let currentOrigin = frame.origin
         var nextOrigin = NSPoint(
@@ -45,8 +56,46 @@ final class FloatingPanel: NSPanel {
             nextOrigin.y = min(max(nextOrigin.y, minimumY), maximumY)
         }
 
-        guard nextOrigin != currentOrigin else { return false }
+        guard nextOrigin != currentOrigin else { return nil }
         setFrameOrigin(nextOrigin)
-        return true
+        return NSPoint(
+            x: nextOrigin.x - currentOrigin.x,
+            y: nextOrigin.y - currentOrigin.y
+        )
+    }
+
+    override func close() {
+        releaseCursor()
+        super.close()
+    }
+
+    private func captureCursor(movingBy movement: NSPoint) {
+        guard let cursorPosition = CGEvent(source: nil)?.location else { return }
+
+        if !isCursorCaptured {
+            guard CGDisplayHideCursor(CGMainDisplayID()) == .success else { return }
+            isCursorCaptured = true
+        }
+
+        // AppKit screen coordinates grow upward. Quartz cursor coordinates grow downward.
+        _ = CGWarpMouseCursorPosition(CGPoint(
+            x: cursorPosition.x + movement.x,
+            y: cursorPosition.y - movement.y
+        ))
+
+        cursorRevealWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.releaseCursor()
+        }
+        cursorRevealWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+    }
+
+    private func releaseCursor() {
+        cursorRevealWorkItem?.cancel()
+        cursorRevealWorkItem = nil
+        guard isCursorCaptured else { return }
+        _ = CGDisplayShowCursor(CGMainDisplayID())
+        isCursorCaptured = false
     }
 }
