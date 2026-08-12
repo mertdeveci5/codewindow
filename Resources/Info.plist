@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.2</string>
+    <string>0.1.3</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSApplicationCategoryType</key>
@@ -29,6 +29,18 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>https://github.com/mertdeveci5/codewindow/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>3a57DrZfaqBBnRtAgdbriBqFavkTFIhkHSHOrCy9+Ms=</string>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUVerifyUpdateBeforeExtraction</key>
     <true/>
 </dict>
 </plist>

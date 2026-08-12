@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import CodeWindowCore
 import Darwin
+import Sparkle
 import SwiftUI
 
 @MainActor
@@ -10,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: SessionStore?
     private var sessionsCancellable: AnyCancellable?
     private var isManuallyHidden = false
-    private var didCheckForUpdates = false
+    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -24,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 smokeDirectory = try StateFiles.directory(environment: ["CODEWINDOW_STATE_DIR": url.path])
             } else {
                 smokeDirectory = nil
+                updaterController = SPUStandardUpdaterController(
+                    startingUpdater: true,
+                    updaterDelegate: nil,
+                    userDriverDelegate: nil
+                )
             }
 
             let store = try SessionStore(directory: smokeDirectory)
@@ -35,6 +41,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
+                let hasSparkleFramework = FileManager.default.fileExists(
+                    atPath: Bundle.main.bundleURL
+                        .appendingPathComponent("Contents/Frameworks/Sparkle.framework")
+                        .path
+                )
+                let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
+                let publicKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+                let hasSparkleConfiguration = feedURL ==
+                    "https://github.com/mertdeveci5/codewindow/releases/latest/download/appcast.xml"
+                    && publicKey?.isEmpty == false
                 let originalOrigin = panel.frame.origin
                 let trackpadMovement = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
                 let trackpadMoveWorks = trackpadMovement == NSPoint(x: -8, y: 0)
@@ -56,6 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && panel.frame.width == PanelMetrics.width
                     && AgentLogoAssets.allAvailable
                     && hasAppIcon
+                    && hasSparkleFramework
+                    && hasSparkleConfiguration
                     && trackpadMoveWorks
                     && validPositionWasPreserved
                     && offscreenPositionWasConstrained
@@ -66,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "nonactivating=\(panel.styleMask.contains(.nonactivatingPanel)) "
                         + "width=\(Int(panel.frame.width)) "
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
+                        + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
                         + "trackpad=\(trackpadMoveWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
@@ -141,9 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return await self.installHooks()
             },
-            checkForUpdates: { [weak self] userInitiated in
-                guard let self else { return nil }
-                return await self.checkForUpdates(userInitiated: userInitiated)
+            checkForUpdates: { [weak self] in
+                self?.updaterController?.checkForUpdates(nil)
             },
             hidePanel: { [weak self] in
                 self?.hidePanelManually()
@@ -240,35 +258,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func checkForUpdates(userInitiated: Bool) async -> PanelNotice? {
-        if !userInitiated {
-            guard !didCheckForUpdates else { return nil }
-            didCheckForUpdates = true
-        }
-
-        let currentVersion = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? ""
-        switch await ReleaseChecker.check(currentVersion: currentVersion) {
-        case .current:
-            return userInitiated
-                ? PanelNotice(message: "CodeWindow is up to date", succeeded: true)
-                : nil
-        case let .available(version, pageURL):
-            if userInitiated {
-                let opened = NSWorkspace.shared.open(pageURL)
-                return PanelNotice(
-                    message: opened ? "opening CodeWindow \(version)" : "could not open the release",
-                    succeeded: opened
-                )
-            }
-            return PanelNotice(message: "CodeWindow \(version) is available · check menu", succeeded: true)
-        case .failed:
-            return userInitiated
-                ? PanelNotice(message: "could not check for updates", succeeded: false)
-                : nil
-        }
-    }
 }
 
 let application = NSApplication.shared

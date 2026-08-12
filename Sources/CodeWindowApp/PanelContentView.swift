@@ -15,7 +15,7 @@ struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     let reportHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
-    let checkForUpdates: (_ userInitiated: Bool) async -> PanelNotice?
+    let checkForUpdates: () -> Void
     let hidePanel: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -42,17 +42,10 @@ struct PanelContentView: View {
                 Button("Install or update agent hooks…") {
                     Task { show(await installHooks()) }
                 }
-                Button("Check for Updates…") {
-                    Task {
-                        if let notice = await checkForUpdates(true) { show(notice) }
-                    }
-                }
+                Button("Check for Updates…", action: checkForUpdates)
                 Divider()
                 Button("Hide CodeWindow", action: hidePanel)
                 Button("Quit CodeWindow") { NSApplication.shared.terminate(nil) }
-            }
-            .task {
-                if let notice = await checkForUpdates(false) { show(notice) }
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("CodeWindow, agent activity")

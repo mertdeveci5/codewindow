@@ -11,6 +11,9 @@ let package = Package(
         .executable(name: "codewindow-install", targets: ["CodeWindowInstaller"]),
         .executable(name: "CodeWindowTests", targets: ["CodeWindowTests"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.5"),
+    ],
     targets: [
         .target(name: "CodeWindowCore"),
         .executableTarget(
@@ -23,7 +26,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "CodeWindowApp",
-            dependencies: ["CodeWindowCore"]
+            dependencies: [
+                "CodeWindowCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ]
         ),
         .executableTarget(
             name: "CodeWindowTests",

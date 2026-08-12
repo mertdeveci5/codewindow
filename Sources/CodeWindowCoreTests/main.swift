@@ -249,17 +249,6 @@ func testStateFiles() throws {
     try require(ProcessInspector.stamp(pid: Int32.max) == nil, "Impossible PID accepted")
 }
 
-func testAppVersions() throws {
-    let current = try unwrap(AppVersion("0.1.2"), "Current version was rejected")
-    let newer = try unwrap(AppVersion("v0.1.10"), "Tagged version was rejected")
-    let equivalent = try unwrap(AppVersion("0.1.2.0"), "Equivalent version was rejected")
-
-    try require(newer > current, "Numeric components were compared lexically")
-    try require(current == equivalent, "Trailing zero changed version equality")
-    try require(AppVersion("1.0-beta") == nil, "Prerelease text was accepted")
-    try require(AppVersion("1..0") == nil, "Empty version component was accepted")
-}
-
 func testTerminalAgentDiscovery() throws {
     let currentPID = ProcessInfo.processInfo.processIdentifier
     let discovered = ProcessInspector.terminalAgentProcesses()
@@ -552,7 +541,6 @@ func readJSON(_ url: URL) throws -> [String: Any] {
 let tests: [(String, () throws -> Void)] = [
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),
-    ("app versions", testAppVersions),
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
     ("terminal application ownership", testApplicationOwnership),

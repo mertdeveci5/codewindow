@@ -4,11 +4,11 @@ CodeWindow is a small Mac app that shows what terminal coding agents are doing. 
 
 The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, a web page, a tool target, or a request for permission.
 
-When the frontmost terminal app owns one of the connected agent processes, CodeWindow hides itself. Switch to another app or Space and the panel appears again, like a video entering picture-in-picture mode. Process ancestry is used instead of a fixed terminal list, so this also works with integrated terminals when their process tree is connected.
+CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. Process ancestry lets the same behavior work with integrated terminals.
 
 Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. You can also move the panel by clicking and dragging the background.
 
-CodeWindow uses SwiftUI and AppKit. It does not use Electron, a web view, a background daemon, or a database.
+CodeWindow uses SwiftUI and AppKit. Session state is stored in small files on disk.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ The release archive includes code for Apple silicon and Intel Macs.
 
 ## Install the preview release
 
-1. Download `CodeWindow-v0.1.2-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.3-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the ZIP file.
 3. Move `CodeWindow.app` to the Applications folder.
 4. Right-click the app and choose Open.
@@ -46,7 +46,7 @@ If a row says `hooks not reporting`, that session has not loaded the hooks yet. 
 
 Run the installer again after replacing CodeWindow with a newer version. This updates the small reporter used by the hooks.
 
-## Show, hide, and quit
+## Panel controls
 
 CodeWindow automatically hides while you are looking at the terminal that owns a detected agent. It appears again when another app becomes active. This also works before hooks are installed.
 
@@ -60,9 +60,9 @@ open -a CodeWindow
 
 ## Updates
 
-CodeWindow checks the public GitHub Releases API once when it opens. If a newer version exists, the panel briefly shows an update notice. Right-click the panel and choose Check for Updates to open the verified release page.
+CodeWindow uses Sparkle to check for updates from GitHub once per day. Right-click the panel and choose Check for Updates to check immediately. Sparkle shows the version and asks before installing it.
 
-The app does not download or replace executable code. Fully automatic installation will be added with Sparkle after releases use Apple Developer ID signing and notarization. This keeps the preview updater small and avoids treating an ad hoc signature as a security identity.
+Every update archive and update feed is signed with a CodeWindow EdDSA key. Sparkle verifies those signatures before replacing the app. Preview releases remain ad hoc signed and are not notarized, so the first manual installation can still show a macOS security warning.
 
 ## Remove CodeWindow
 
@@ -90,7 +90,7 @@ The preview can contain part of a task, command, or selected tool argument. Code
 
 CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
 
-The update check sends a normal HTTPS request to GitHub containing the app version and standard network metadata such as the user's IP address. No session or agent activity is included.
+The update check sends a normal HTTPS request to GitHub containing the app version and standard network metadata such as the user's IP address. If you accept an update, Sparkle downloads the app archive from GitHub. No session or agent activity is included.
 
 The app watches that directory for changes. A fallback process scan runs every five seconds when the panel is empty and every fifteen seconds when a session is present. The scan finds agent sessions that have not loaded the hooks.
 
@@ -112,6 +112,14 @@ Build the universal release archive:
 
 The archive and its SHA-256 checksum are written to `build/`.
 
+Maintainers can also create the signed Sparkle feed using the private key stored in the macOS Keychain:
+
+```sh
+SPARKLE_KEY_ACCOUNT=dev.codewindow.app ./Scripts/package-release.sh
+```
+
+Pushing a matching version tag runs the release workflow. It checks both bundle version fields and the Sparkle key, tests the app, builds the universal archive, signs `appcast.xml`, and publishes all three files to GitHub Releases. Increment both `CFBundleShortVersionString` and `CFBundleVersion` for every app release.
+
 Set `CODEWINDOW_SIGN_IDENTITY` to a Developer ID Application identity if you have one. A public release should also be submitted to Apple's notary service before distribution. See [Signing Mac Software with Developer ID](https://developer.apple.com/developer-id/) and [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 
 ## Test
@@ -129,4 +137,4 @@ The app bundles the Codex, Claude, and Pi marks. Source links are listed in [`Re
 
 ## License
 
-CodeWindow is available under the [MIT License](LICENSE).
+CodeWindow is available under the [MIT License](LICENSE). The app bundle also includes this license and Sparkle's third-party license notices.
