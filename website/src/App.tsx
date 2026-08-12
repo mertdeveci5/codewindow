@@ -45,20 +45,18 @@ export function App(): React.ReactElement {
         </section>
 
         <section className="shell pb-14">
-          <div className="install-guide">
-            <div className="install-guide-header">
-              <div>
-                <p className="eyebrow">Install</p>
-                <h2>Get CodeWindow running</h2>
-                <p>Follow these steps once. Updates arrive inside the app after that.</p>
-              </div>
-              <Button render={<a href={DOWNLOAD_URL} />} size="lg">
-                <ArrowDownToLineIcon aria-hidden="true" />
-                Download for macOS
-              </Button>
+          <div className="install-guide-header">
+            <div>
+              <p className="eyebrow">Install</p>
+              <h2>Get CodeWindow running</h2>
+              <p>Follow these steps once. Updates arrive inside the app after that.</p>
             </div>
-            <InstallationTimeline />
+            <Button render={<a href={DOWNLOAD_URL} />} size="lg">
+              <ArrowDownToLineIcon aria-hidden="true" />
+              Download for macOS
+            </Button>
           </div>
+          <InstallationTimeline />
           <p className="install-note">
             The download is a ZIP containing only CodeWindow.app. Preview builds are not notarized.
             Privacy details and uninstall steps are in the{" "}

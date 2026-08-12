@@ -3,7 +3,7 @@ import type React from "react";
 import { Button } from "@/components/ui/button";
 import { DOWNLOAD_URL, REPO_URL } from "@/lib/site";
 
-/** The bundled app mark, using the same purple surface as the website button. */
+/** The app mark, using the same blue surface as the primary website button. */
 export function AppMark({ className }: { className?: string }): React.ReactElement {
   return (
     <span aria-hidden="true" className={["app-mark", className].filter(Boolean).join(" ")}>
