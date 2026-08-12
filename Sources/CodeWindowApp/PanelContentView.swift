@@ -9,7 +9,7 @@ struct PanelNotice: Equatable, Sendable {
 }
 
 /// An always-on-top Live Activity: every running session remains visible and
-/// each equal-height row shows only its single latest safe action.
+/// each compact row shows its latest safe action, with optional inline detail.
 /// No timers, no clocks, no repeating animation. The panel only moves when state moves.
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
@@ -189,10 +189,7 @@ private struct SessionRow: View {
                     .padding(.trailing, PanelMetrics.rowInsetHorizontal)
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(session.accessibilityDescription)
-        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(
             isExpanded
                 ? "Activates the terminal for this session"
@@ -247,6 +244,14 @@ private struct SessionRow: View {
 
     private var attentionRailHeight: CGFloat {
         PanelMetrics.attentionRailHeight + (isExpanded ? PanelMetrics.expandedDetailHeight : 0)
+    }
+
+    private var accessibilityValue: String {
+        guard isExpanded else {
+            return "\(session.accessibilityDescription), collapsed"
+        }
+        return "\(session.accessibilityDescription), task \(session.detailTaskLabel), "
+            + "current action \(session.detailActionLabel), expanded"
     }
 
     /// Identity is supporting metadata; the changing live action remains dominant.

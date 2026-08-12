@@ -240,21 +240,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             !$0.isTerminated && $0.activationPolicy == .regular
         }
 
-        let application = applications.first {
+        if let application = applications.first(where: {
             ProcessInspector.process(
                 session.process,
                 belongsToApplicationPID: $0.processIdentifier,
                 bundlePath: nil
             )
-        } ?? applications.first {
+        }) {
+            return application.activate(options: [.activateIgnoringOtherApps])
+        }
+
+        let bundleMatches = applications.filter {
             ProcessInspector.process(
                 session.process,
                 belongsToApplicationPID: $0.processIdentifier,
                 bundlePath: $0.bundleURL?.standardizedFileURL.path
             )
         }
-
-        return application?.activate(options: [.activateIgnoringOtherApps]) == true
+        guard bundleMatches.count == 1, let application = bundleMatches.first else {
+            return false
+        }
+        return application.activate(options: [.activateIgnoringOtherApps])
     }
 
     private func installHooks() async -> PanelNotice {

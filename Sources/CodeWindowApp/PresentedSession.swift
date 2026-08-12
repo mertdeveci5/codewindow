@@ -120,7 +120,14 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
     }
 
     var accessibilityDescription: String {
-        "\(agent.displayName), project \(projectLabel), \(actionLabel), \(primaryLabel), \(statusDescription)"
+        var parts = [agent.displayName, "project \(projectLabel)", actionLabel]
+        if primaryLabel != actionLabel {
+            parts.append(primaryLabel)
+        }
+        if statusDescription != actionLabel {
+            parts.append(statusDescription)
+        }
+        return parts.joined(separator: ", ")
     }
 
     var updatedAt: Date {
