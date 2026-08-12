@@ -17,9 +17,11 @@ struct PanelContentView: View {
     let installHooks: () async -> PanelNotice
     let checkForUpdates: () -> Void
     let hidePanel: () -> Void
+    let activateTerminal: (PresentedSession) -> Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notice: PanelNotice?
+    @State private var expandedSessionID: String?
 
     var body: some View {
         stack
@@ -65,14 +67,34 @@ struct PanelContentView: View {
                     SessionRow(
                         session: session,
                         showsDivider: index > 0,
-                        reduceMotion: reduceMotion
+                        reduceMotion: reduceMotion,
+                        isExpanded: expandedSessionID == session.id,
+                        select: { select(session) }
                     )
                     .transition(rowTransition)
                 }
             }
         }
         .animation(motion, value: store.sessions.map(\.id))
+        .animation(motion, value: expandedSessionID)
         .animation(motion, value: notice)
+        .onChange(of: store.sessions.map(\.id)) { sessionIDs in
+            if let expandedSessionID, !sessionIDs.contains(expandedSessionID) {
+                self.expandedSessionID = nil
+            }
+        }
+    }
+
+    private func select(_ session: PresentedSession) {
+        guard expandedSessionID == session.id else {
+            expandedSessionID = session.id
+            return
+        }
+        if activateTerminal(session) {
+            expandedSessionID = nil
+        } else {
+            show(PanelNotice(message: "terminal is no longer available", succeeded: false))
+        }
     }
 
     private func show(_ notice: PanelNotice) {
@@ -130,21 +152,20 @@ private struct SessionRow: View {
     let session: PresentedSession
     let showsDivider: Bool
     let reduceMotion: Bool
+    let isExpanded: Bool
+    let select: () -> Void
 
     var body: some View {
-        HStack(spacing: PanelMetrics.glyphGap) {
-            AgentLogo(agent: session.agent)
-
-            VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
-                PreviewLine(session: session, reduceMotion: reduceMotion)
-                identityLine
+        Button(action: select) {
+            VStack(spacing: 0) {
+                header
+                if isExpanded {
+                    details
+                        .transition(.opacity)
+                }
             }
-
-            Spacer(minLength: 6)
-            StatusMark(session: session, reduceMotion: reduceMotion)
         }
-        .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
-        .frame(height: PanelMetrics.rowHeight)
+        .buttonStyle(.plain)
         .background {
             if session.needsAttention {
                 RoundedRectangle(cornerRadius: PanelMetrics.rowRadius, style: .continuous)
@@ -154,7 +175,7 @@ private struct SessionRow: View {
                             .fill(PanelPalette.attention)
                             .frame(
                                 width: PanelMetrics.attentionRailWidth,
-                                height: PanelMetrics.attentionRailHeight
+                                height: attentionRailHeight
                             )
                             .padding(.leading, 2)
                     }
@@ -170,6 +191,62 @@ private struct SessionRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(session.accessibilityDescription)
+        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(
+            isExpanded
+                ? "Activates the terminal for this session"
+                : "Shows more activity for this session"
+        )
+    }
+
+    private var header: some View {
+        HStack(spacing: PanelMetrics.glyphGap) {
+            AgentLogo(agent: session.agent)
+
+            VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
+                PreviewLine(session: session, reduceMotion: reduceMotion)
+                identityLine
+            }
+
+            Spacer(minLength: 6)
+            StatusMark(session: session, reduceMotion: reduceMotion)
+        }
+        .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
+        .frame(height: PanelMetrics.rowHeight)
+        .contentShape(Rectangle())
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: PanelMetrics.detailLineGap) {
+            Text(session.detailTaskLabel)
+                .font(.system(size: PanelMetrics.actionSize, weight: .regular))
+                .foregroundStyle(PanelPalette.title.opacity(0.88))
+                .lineLimit(2)
+
+            HStack(spacing: 5) {
+                Text(session.detailActionLabel)
+                    .lineLimit(1)
+                    .truncationMode(session.prefersLeadingTruncation ? .head : .tail)
+
+                Spacer(minLength: 8)
+
+                Text("open terminal")
+                    .fixedSize()
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 8.5, weight: .regular))
+            }
+            .font(.system(size: PanelMetrics.metaSize, weight: .regular))
+            .foregroundStyle(PanelPalette.meta)
+        }
+        .padding(.leading, PanelMetrics.separatorInset)
+        .padding(.trailing, PanelMetrics.rowInsetHorizontal)
+        .frame(height: PanelMetrics.expandedDetailHeight, alignment: .top)
+        .contentShape(Rectangle())
+    }
+
+    private var attentionRailHeight: CGFloat {
+        PanelMetrics.attentionRailHeight + (isExpanded ? PanelMetrics.expandedDetailHeight : 0)
     }
 
     /// Identity is supporting metadata; the changing live action remains dominant.

@@ -165,6 +165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             hidePanel: { [weak self] in
                 self?.hidePanelManually()
+            },
+            activateTerminal: { [weak self] session in
+                self?.activateTerminal(for: session) ?? false
             }
         )
         panel.contentView = NSHostingView(rootView: content)
@@ -230,6 +233,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bundlePath: bundlePath
             )
         }
+    }
+
+    private func activateTerminal(for session: PresentedSession) -> Bool {
+        let applications = NSWorkspace.shared.runningApplications.filter {
+            !$0.isTerminated && $0.activationPolicy == .regular
+        }
+
+        let application = applications.first {
+            ProcessInspector.process(
+                session.process,
+                belongsToApplicationPID: $0.processIdentifier,
+                bundlePath: nil
+            )
+        } ?? applications.first {
+            ProcessInspector.process(
+                session.process,
+                belongsToApplicationPID: $0.processIdentifier,
+                bundlePath: $0.bundleURL?.standardizedFileURL.path
+            )
+        }
+
+        return application?.activate(options: [.activateIgnoringOtherApps]) == true
     }
 
     private func installHooks() async -> PanelNotice {
