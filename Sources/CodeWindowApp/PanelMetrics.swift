@@ -12,7 +12,6 @@ enum PanelMetrics {
     static let expandedDetailHeight: CGFloat = 50
 
     static let glyphSize: CGFloat = 22
-    static let glyphRadius: CGFloat = 6
     static let glyphGap: CGFloat = 9
 
     static let actionSize: CGFloat = 12.5
