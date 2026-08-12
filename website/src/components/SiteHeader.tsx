@@ -62,8 +62,8 @@ export function SiteHeader(): React.ReactElement {
         </a>
 
         <nav className="sidebar-nav" aria-label="On this page">
-          {NAV_ITEMS.map((item, index) => (
-            <a aria-current={index === 0 ? "page" : undefined} href={item.href} key={item.href}>
+          {NAV_ITEMS.map((item) => (
+            <a href={item.href} key={item.href}>
               {item.label}
             </a>
           ))}
