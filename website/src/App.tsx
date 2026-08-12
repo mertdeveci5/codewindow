@@ -1,5 +1,6 @@
 import { ArrowDownToLineIcon } from "lucide-react";
 import type React from "react";
+import { InstallationTimeline } from "@/components/InstallationTimeline";
 import { PanelDemo } from "@/components/PanelDemo";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
@@ -44,21 +45,23 @@ export function App(): React.ReactElement {
         </section>
 
         <section className="shell pb-14">
-          <div className="install">
-            <div>
-              <h2>Download CodeWindow</h2>
-              <p>
-                Requires macOS 13. Move the app to Applications, right-click it to open it, and
-                install the agent hooks from the panel.
-              </p>
+          <div className="install-guide">
+            <div className="install-guide-header">
+              <div>
+                <p className="eyebrow">Install</p>
+                <h2>Get CodeWindow running</h2>
+                <p>Follow these steps once. Updates arrive inside the app after that.</p>
+              </div>
+              <Button render={<a href={DOWNLOAD_URL} />} size="lg">
+                <ArrowDownToLineIcon aria-hidden="true" />
+                Download for macOS
+              </Button>
             </div>
-            <Button render={<a href={DOWNLOAD_URL} />} size="lg">
-              <ArrowDownToLineIcon aria-hidden="true" />
-              Download for macOS
-            </Button>
+            <InstallationTimeline />
           </div>
           <p className="install-note">
-            Preview builds are not notarized. Privacy details and uninstall steps are in the{" "}
+            The download is a ZIP containing only CodeWindow.app. Preview builds are not notarized.
+            Privacy details and uninstall steps are in the{" "}
             <a className="text-link" href={REPO_URL} rel="noreferrer noopener" target="_blank">
               README
             </a>

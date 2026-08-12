@@ -76,6 +76,22 @@
   --code: oklch(1 0 0);
   --code-foreground: var(--foreground);
   --code-highlight: oklch(0.96 0.003 264.5);
+  --primary-gradient: linear-gradient(
+    180deg,
+    oklch(0.6 0.18 290),
+    oklch(0.52 0.2 290) 62%,
+    oklch(0.55 0.19 290)
+  );
+  --primary-gradient-horizontal: linear-gradient(
+    90deg,
+    oklch(0.6 0.18 290),
+    oklch(0.52 0.2 290) 62%,
+    oklch(0.55 0.19 290)
+  );
+  --primary-gradient-border: oklch(0.5 0.15 290);
+  --primary-gradient-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.2), inset 0 -1px 0 oklch(0 0 0 / 0.2),
+    0 1px 2px oklch(0 0 0 / 0.2);
 }
 
 .dark {
@@ -295,38 +311,41 @@
 
   /* --------------------------------------------------------------- install */
 
-  .install {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.25rem;
-    padding: 1rem;
+  .install-guide {
+    padding: clamp(1.25rem, 4vw, 2rem);
     border: 1px solid rgb(255 255 255 / 0.08);
-    border-radius: 0.875rem;
+    border-radius: 1rem;
     background: rgb(255 255 255 / 0.025);
   }
 
+  .install-guide-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+  }
+
+  .install-guide h2 {
+    margin-top: 0.375rem;
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: rgb(255 255 255 / 0.94);
+  }
+
+  .install-guide-header > div > p:last-child {
+    margin-top: 0.375rem;
+    max-width: 26rem;
+    font-size: 0.8125rem;
+    line-height: 1.3rem;
+    text-wrap: pretty;
+    color: rgb(255 255 255 / 0.58);
+  }
+
   @media (max-width: 560px) {
-    .install {
-      align-items: flex-start;
+    .install-guide-header {
       flex-direction: column;
     }
-  }
-
-  .install h2 {
-    margin-bottom: 0.25rem;
-    font-size: 0.8125rem;
-    font-weight: 550;
-    letter-spacing: -0.005em;
-    color: rgb(255 255 255 / 0.88);
-  }
-
-  .install p {
-    font-size: 0.8125rem;
-    font-weight: 450;
-    line-height: 1.35rem;
-    text-wrap: pretty;
-    color: rgb(255 255 255 / 0.66);
   }
 
   .install-note {
