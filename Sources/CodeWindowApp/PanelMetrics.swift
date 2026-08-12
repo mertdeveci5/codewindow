@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// Layout constants for the always-expanded Live Activity panel.
-/// Every session gets one equal-height row inside a single compact island.
+/// Layout constants for the Live Activity panel. Sessions share one compact
+/// island, and one row can reveal additional detail at a time.
 enum PanelMetrics {
     static let width: CGFloat = 296
     static let outerRadius: CGFloat = 18
@@ -9,15 +9,16 @@ enum PanelMetrics {
     static let rowRadius: CGFloat = outerRadius - bezel
     static let rowInsetHorizontal: CGFloat = 9
     static let rowHeight: CGFloat = 40
+    static let expandedDetailHeight: CGFloat = 50
 
     static let glyphSize: CGFloat = 22
-    static let glyphRadius: CGFloat = 6
     static let glyphGap: CGFloat = 9
 
     static let actionSize: CGFloat = 12.5
     static let commandSize: CGFloat = 11.5
     static let metaSize: CGFloat = 10
     static let textLineGap: CGFloat = 1.5
+    static let detailLineGap: CGFloat = 4
 
     static let statusColumn: CGFloat = 10
     static let statusDot: CGFloat = 5

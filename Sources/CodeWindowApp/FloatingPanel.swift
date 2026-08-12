@@ -1,8 +1,8 @@
 import AppKit
 
 /// A borderless, non-activating panel that floats above every Space and over
-/// full-screen apps. It never takes key or main status, so clicking or dragging
-/// it never steals focus from the terminal the user is working in.
+/// full-screen apps. The panel itself never takes key or main status. A session
+/// row can still explicitly return focus to the terminal that owns that session.
 final class FloatingPanel: NSPanel {
     private var cursorRevealWorkItem: DispatchWorkItem?
     private var isCursorCaptured = false

@@ -6,24 +6,21 @@ struct AgentLogo: View {
     let agent: AgentKind
 
     var body: some View {
-        RoundedRectangle(cornerRadius: PanelMetrics.glyphRadius, style: .continuous)
-            .fill(agent.logoBackground.opacity(agent.logoBackgroundOpacity))
-            .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
-            .overlay {
-                if let logo = AgentLogoAssets.image(for: agent) {
-                    Image(nsImage: logo)
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .padding(agent.logoPadding)
-                } else {
-                    Image(systemName: agent.fallbackSymbolName)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(agent.fallbackTint)
-                }
+        Group {
+            if let logo = AgentLogoAssets.image(for: agent) {
+                Image(nsImage: logo)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .padding(agent.logoPadding)
+            } else {
+                Image(systemName: agent.fallbackSymbolName)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(agent.fallbackTint)
             }
-            .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.glyphRadius, style: .continuous))
-            .accessibilityHidden(true)
+        }
+        .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
+        .accessibilityHidden(true)
     }
 }
 
@@ -56,25 +53,11 @@ enum AgentLogoAssets {
 }
 
 private extension AgentKind {
-    var logoBackground: Color {
-        switch self {
-        case .codex, .pi: .black
-        case .claude: Color(red: 0.94, green: 0.92, blue: 0.87)
-        }
-    }
-
     var logoPadding: CGFloat {
         switch self {
         case .codex: 3
         case .pi: 0
         case .claude: 4
-        }
-    }
-
-    var logoBackgroundOpacity: Double {
-        switch self {
-        case .codex, .pi: 1
-        case .claude: 0.82
         }
     }
 

@@ -50,6 +50,8 @@ Run the installer again after replacing CodeWindow with a newer version. This up
 
 CodeWindow automatically hides while you are looking at the terminal that owns a detected agent. It appears again when another app becomes active. This also works before hooks are installed.
 
+Click a session once to expand its latest task and action. Click the expanded session again to return to the terminal application that owns it. CodeWindow focuses the correct terminal application without requesting Accessibility access or simulating keystrokes. It leaves the terminal's current tab or pane unchanged.
+
 Right-click the panel and choose Hide CodeWindow to remove the panel without stopping its session tracking. Open CodeWindow again from Applications, Finder, or Spotlight to show it again.
 
 Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeWindow normally to start it again. You can also use Terminal:

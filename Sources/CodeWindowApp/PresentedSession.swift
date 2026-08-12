@@ -65,6 +65,26 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
         primaryLabel != actionLabel
     }
 
+    /// The task and current action are shown together only when a row is expanded.
+    var detailTaskLabel: String {
+        switch self {
+        case let .reported(state):
+            return state.taskPreview ?? "working in \(state.projectLabel)"
+        case .detected:
+            return "install or update hooks, then restart this agent"
+        }
+    }
+
+    var detailActionLabel: String {
+        switch self {
+        case let .reported(state):
+            guard let preview = state.actionPreview else { return state.action.label }
+            return "\(state.action.label) · \(preview)"
+        case .detected:
+            return actionLabel
+        }
+    }
+
     var metadataLabel: String {
         if isDiagnostic { return "setup needed" }
         return (hasPreview ? actionLabel : agent.displayName).lowercased()
@@ -100,7 +120,14 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
     }
 
     var accessibilityDescription: String {
-        "\(agent.displayName), project \(projectLabel), \(actionLabel), \(primaryLabel), \(statusDescription)"
+        var parts = [agent.displayName, "project \(projectLabel)", actionLabel]
+        if primaryLabel != actionLabel {
+            parts.append(primaryLabel)
+        }
+        if statusDescription != actionLabel {
+            parts.append(statusDescription)
+        }
+        return parts.joined(separator: ", ")
     }
 
     var updatedAt: Date {
