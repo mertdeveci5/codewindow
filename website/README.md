@@ -1,10 +1,10 @@
 # CodeWindow website
 
-The compact product site for CodeWindow. Vite, React 19, TypeScript, Tailwind CSS v4, and the
-coss/Base UI component primitives. Dark mode only.
+This directory contains the CodeWindow website. It uses Vite, React 19, TypeScript, Tailwind CSS
+v4, and coss/Base UI components. The site only has a dark theme.
 
-The product demo in the hero is the real panel rebuilt in HTML and CSS using the metrics from
-`Sources/CodeWindowApp/PanelMetrics.swift`, not a screenshot.
+The product demo rebuilds the panel in HTML and CSS with the measurements from
+`Sources/CodeWindowApp/PanelMetrics.swift`.
 
 ## Local development
 
@@ -28,8 +28,8 @@ npm run preview     # serve the production build locally
 
 ## Deploy
 
-The site is served from Cloudflare Workers Static Assets. `wrangler.jsonc` has no Worker script and
-no assets binding — Cloudflare serves `dist/` directly.
+Wrangler uploads `dist/` to Cloudflare Workers Static Assets. The configuration does not include a
+Worker script or binding.
 
 ```sh
 npm run deploy:dry-run   # build and validate without uploading
@@ -46,7 +46,7 @@ website/
   index.html            document metadata, favicon, no-JS fallback
   public/favicon.svg     copy of Resources/AppIcon.svg
   src/index.css          design tokens, product page, panel styles
-  src/App.tsx            concise product page content
+  src/App.tsx            page content
   src/components/        SiteHeader, PanelDemo, AgentMarks
   src/components/ui/     copied coss Button, Dialog, ScrollArea, Spinner
   src/lib/               release links and shared utilities

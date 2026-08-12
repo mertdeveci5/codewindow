@@ -153,7 +153,7 @@ function PanelScene({ focused }: { focused: boolean }): React.ReactElement {
               ))}
             </span>
             <span className="font-mono text-[9px] text-white/25">
-              {focused ? "terminal — codewindow" : "another app"}
+              {focused ? "terminal: codewindow" : "another app"}
             </span>
           </div>
           <div className="panel-stage-window-body">
@@ -292,10 +292,10 @@ export function PanelDemo(): React.ReactElement {
             >
               <DialogHeader>
                 <DialogTitle className="text-[0.9375rem] font-[550] text-white/92">
-                  The panel, up close
+                  Interactive preview
                 </DialogTitle>
                 <DialogDescription className="text-white/60">
-                  Switch the frontmost app and watch the panel step aside.
+                  Choose the frontmost app. The panel hides while its terminal is active.
                 </DialogDescription>
               </DialogHeader>
 

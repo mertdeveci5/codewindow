@@ -5,21 +5,6 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { DOWNLOAD_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
-const BENEFITS = [
-  {
-    body: "See the latest task, command, file, or permission request.",
-    title: "Every session, one glance",
-  },
-  {
-    body: "Return to the owning terminal and the panel slips away. Switch back and it returns.",
-    title: "Out of the way on cue",
-  },
-  {
-    body: "SwiftUI and AppKit. No Electron, web view, daemon, or database.",
-    title: "Small, native, local",
-  },
-] as const;
-
 export function App(): React.ReactElement {
   return (
     <div className="page">
@@ -36,8 +21,8 @@ export function App(): React.ReactElement {
             <span className="marker">Picture-in-picture</span> for your terminal coding agents.
           </h1>
           <p className="lede mt-4 max-w-[34rem]">
-            Keep Codex, Claude Code, and Pi in view while you work. CodeWindow floats above
-            everything, then slips away when you return to their terminal.
+            CodeWindow shows each Codex, Claude Code, and Pi session in a floating macOS panel. It
+            hides while the connected terminal is active.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -59,21 +44,12 @@ export function App(): React.ReactElement {
         </section>
 
         <section className="shell pb-14">
-          <ul className="benefit-grid">
-            {BENEFITS.map((benefit) => (
-              <li className="benefit" key={benefit.title}>
-                <h2>{benefit.title}</h2>
-                <p>{benefit.body}</p>
-              </li>
-            ))}
-          </ul>
-
-          <div className="install mt-8">
+          <div className="install">
             <div>
-              <h2>Ready when your agents are.</h2>
+              <h2>Download CodeWindow</h2>
               <p>
-                macOS 13+. Move the app to Applications, right-click Open, then install hooks from
-                the panel.
+                Requires macOS 13. Move the app to Applications, right-click it to open it, and
+                install the agent hooks from the panel.
               </p>
             </div>
             <Button render={<a href={DOWNLOAD_URL} />} size="lg">
@@ -93,7 +69,7 @@ export function App(): React.ReactElement {
 
       <footer className="site-footer">
         <div className="shell flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
-          <span>CodeWindow v{VERSION} — a preview release.</span>
+          <span>CodeWindow v{VERSION} preview</span>
           <span className="flex items-center gap-4">
             <a href={REPO_URL} rel="noreferrer noopener" target="_blank">
               GitHub
