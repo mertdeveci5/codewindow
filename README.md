@@ -19,7 +19,7 @@ The release archive includes code for Apple silicon and Intel Macs.
 
 ## Install the preview release
 
-1. Download `CodeWindow-v0.1.3-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.4-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the ZIP file.
 3. Move `CodeWindow.app` to the Applications folder.
 4. Right-click the app and choose Open.
@@ -134,6 +134,8 @@ The smoke test checks the floating window behavior, all-Spaces support, full-scr
 ## Logo sources
 
 The app bundles the Codex, Claude, and Pi marks. Source links are listed in [`Resources/AgentLogos/SOURCES.md`](Resources/AgentLogos/SOURCES.md).
+
+The CodeWindow app icon uses Lucide's `picture-in-picture-2` paths with a thinner stroke. Lucide's ISC license is bundled with the app in `ThirdPartyLicenses/Lucide.txt`.
 
 ## License
 
