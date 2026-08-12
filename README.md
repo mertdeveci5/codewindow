@@ -125,7 +125,7 @@ Set `CODEWINDOW_SIGN_IDENTITY` to a Developer ID Application identity if you hav
 ## Test
 
 ```sh
-swift run CodeWindowTests
+./Scripts/test.sh
 ./build/CodeWindow.app/Contents/MacOS/CodeWindow --smoke-test
 ```
 

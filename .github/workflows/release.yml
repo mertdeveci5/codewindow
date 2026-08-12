@@ -23,7 +23,7 @@ jobs:
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
           test "$GITHUB_REF_NAME" = "v$version"
       - name: Test core behavior
-        run: swift run CodeWindowTests
+        run: ./Scripts/test.sh
       - name: Build signed update feed
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
