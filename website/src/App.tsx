@@ -1,11 +1,15 @@
 import type React from "react";
+import { useEffect } from "react";
 import { DownloadButton } from "@/components/DownloadButton";
 import { InstallationTimeline } from "@/components/InstallationTimeline";
 import { PanelDemo } from "@/components/PanelDemo";
 import { SiteHeader } from "@/components/SiteHeader";
+import { captureExternalLinkClicked, startEngagementTracking } from "@/lib/analytics";
 import { RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 export function App(): React.ReactElement {
+  useEffect(() => startEngagementTracking(), []);
+
   return (
     <div className="page">
       <a className="skip-link" href="#demo">
@@ -58,7 +62,13 @@ export function App(): React.ReactElement {
             <p className="install-note">
               The download is a ZIP containing only CodeWindow.app. Preview builds are not
               notarized. Privacy details and uninstall steps are in the{" "}
-              <a className="text-link" href={REPO_URL} rel="noreferrer noopener" target="_blank">
+              <a
+                className="text-link"
+                href={REPO_URL}
+                onClick={() => captureExternalLinkClicked("github_repository", "install")}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
                 README
               </a>
               .
@@ -70,10 +80,20 @@ export function App(): React.ReactElement {
           <div className="shell flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
             <span>CodeWindow v{VERSION} preview</span>
             <span className="flex items-center gap-4">
-              <a href={REPO_URL} rel="noreferrer noopener" target="_blank">
+              <a
+                href={REPO_URL}
+                onClick={() => captureExternalLinkClicked("github_repository", "footer")}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
                 GitHub
               </a>
-              <a href={RELEASES_URL} rel="noreferrer noopener" target="_blank">
+              <a
+                href={RELEASES_URL}
+                onClick={() => captureExternalLinkClicked("github_releases", "footer")}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
                 Releases
               </a>
             </span>

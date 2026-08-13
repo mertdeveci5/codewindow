@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { DownloadButton } from "@/components/DownloadButton";
+import { captureExternalLinkClicked } from "@/lib/analytics";
 import { RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 const NAV_ITEMS = [
@@ -41,6 +42,7 @@ export function SiteHeader(): React.ReactElement {
             <a
               className="hidden text-[0.8125rem] text-white/60 transition-colors hover:text-white/90 min-[420px]:inline"
               href={REPO_URL}
+              onClick={() => captureExternalLinkClicked("github_repository", "header")}
               rel="noreferrer noopener"
               target="_blank"
             >
@@ -69,12 +71,22 @@ export function SiteHeader(): React.ReactElement {
 
         <div className="sidebar-footer">
           <span className="sidebar-version">v{VERSION} preview</span>
-          <a href={REPO_URL} rel="noreferrer noopener" target="_blank">
+          <a
+            href={REPO_URL}
+            onClick={() => captureExternalLinkClicked("github_repository", "sidebar")}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
             <GithubIcon aria-hidden="true" />
             GitHub
             <ExternalLinkIcon aria-hidden="true" className="sidebar-external" />
           </a>
-          <a href={RELEASES_URL} rel="noreferrer noopener" target="_blank">
+          <a
+            href={RELEASES_URL}
+            onClick={() => captureExternalLinkClicked("github_releases", "sidebar")}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
             Releases
             <ExternalLinkIcon aria-hidden="true" className="sidebar-external" />
           </a>
