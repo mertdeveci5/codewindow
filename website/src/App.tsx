@@ -20,7 +20,7 @@ export function App(): React.ReactElement {
 
       <div className="site-content">
         <main className="flex flex-col">
-          <section className="shell pt-12 pb-8 sm:pt-16" id="overview">
+          <section className="shell pt-8 pb-7 sm:pt-16 sm:pb-8" id="overview">
             <p className="eyebrow">macOS · Codex CLI · Claude Code · Pi</p>
             <h1 className="hero-title mt-3">
               <span className="marker">Picture-in-picture</span> for your terminal coding agents.
@@ -30,8 +30,8 @@ export function App(): React.ReactElement {
               hides while the connected terminal is active.
             </p>
 
-            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
-              <DownloadButton location="hero" size="lg">
+            <div className="hero-actions">
+              <DownloadButton className="mobile-primary-cta" location="hero" size="lg">
                 Download for macOS
               </DownloadButton>
               <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-white/55">
@@ -43,18 +43,18 @@ export function App(): React.ReactElement {
             </div>
           </section>
 
-          <section className="shell pb-12" id="demo">
+          <section className="shell pb-10 sm:pb-12" id="demo">
             <PanelDemo />
           </section>
 
-          <section className="shell pb-14" id="install">
+          <section className="shell pb-12 sm:pb-14" id="install">
             <div className="install-guide-header">
               <div>
                 <p className="eyebrow">Install</p>
                 <h2>Get CodeWindow running</h2>
                 <p>Follow these steps once. Updates arrive inside the app after that.</p>
               </div>
-              <DownloadButton location="install" size="lg">
+              <DownloadButton className="mobile-primary-cta" location="install" size="lg">
                 Download for macOS
               </DownloadButton>
             </div>
@@ -77,7 +77,7 @@ export function App(): React.ReactElement {
         </main>
 
         <footer className="site-footer">
-          <div className="shell flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
+          <div className="site-footer-content shell">
             <span>CodeWindow v{VERSION} preview</span>
             <span className="flex items-center gap-4">
               <a

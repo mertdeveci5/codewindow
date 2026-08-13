@@ -202,7 +202,7 @@ function SceneControls({
   canAutoplay,
 }: SceneControls): React.ReactElement {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="demo-controls">
       {canAutoplay ? (
         <button
           aria-label={playing ? "Pause the demo" : "Play the demo"}

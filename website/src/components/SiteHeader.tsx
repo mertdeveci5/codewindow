@@ -27,7 +27,7 @@ export function SiteHeader(): React.ReactElement {
   return (
     <>
       <header className="site-header">
-        <div className="shell flex h-14 items-center justify-between gap-3">
+        <div className="site-header-row shell flex h-14 items-center justify-between gap-3">
           <a
             className="flex items-center gap-2 transition-opacity hover:opacity-80"
             href="#overview"
@@ -48,11 +48,19 @@ export function SiteHeader(): React.ReactElement {
             >
               GitHub
             </a>
-            <DownloadButton location="header" size="sm">
+            <DownloadButton className="site-header-download" location="header" size="sm">
               Download
             </DownloadButton>
           </div>
         </div>
+
+        <nav className="mobile-nav shell" aria-label="On this page">
+          {NAV_ITEMS.map((item) => (
+            <a href={item.href} key={item.href}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
       </header>
 
       <aside className="site-sidebar" aria-label="Primary navigation">
