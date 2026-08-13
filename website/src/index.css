@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -41,7 +40,6 @@
   --code-foreground: var(--code-foreground);
   --font-sans: var(--font-ui);
   --font-heading: var(--font-ui);
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 :root {
@@ -162,7 +160,7 @@
   kbd,
   samp,
   pre {
-    font-family: var(--font-mono);
+    font-family: inherit;
   }
 
   ::selection {
@@ -415,8 +413,8 @@
 
   .sidebar-version {
     margin-bottom: 0.5rem;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
     color: rgb(255 255 255 / 0.3);
   }
 
@@ -458,10 +456,9 @@
   /* ------------------------------------------------------------------ hero */
 
   .eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.125rem;
     color: rgb(255 255 255 / 0.5);
   }
 
@@ -505,8 +502,7 @@
 
   @media (max-width: 360px) {
     .eyebrow {
-      font-size: 0.625rem;
-      letter-spacing: 0.04em;
+      font-size: 0.6875rem;
     }
 
     .hero-title {
@@ -841,11 +837,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .cw-primary[data-mono="true"] {
-    font-family: var(--font-mono);
-    font-size: 11.5px;
   }
 
   .cw-meta {

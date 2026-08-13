@@ -22,7 +22,6 @@ type Row = {
   action: string;
   project: string;
   status: Status;
-  mono?: boolean;
 };
 
 /**
@@ -43,7 +42,6 @@ const ROWS: Row[] = [
     action: "running command",
     project: "codewindow",
     status: "working",
-    mono: true,
   },
   {
     agent: "claude",
@@ -120,7 +118,6 @@ function PanelRow({ row, showsDivider }: { row: Row; showsDivider: boolean }): R
       <span className="min-w-0 flex-1">
         <span
           className="cw-primary block"
-          data-mono={row.mono ?? false}
           style={attention ? { color: "var(--cw-attention)" } : undefined}
         >
           {row.primary}
@@ -152,14 +149,14 @@ function PanelScene({ focused }: { focused: boolean }): React.ReactElement {
                 />
               ))}
             </span>
-            <span className="font-mono text-[9px] text-white/25">
+            <span className="text-[9px] text-white/25">
               {focused ? "terminal: codewindow" : "another app"}
             </span>
           </div>
           <div className="panel-stage-window-body">
             {focused ? (
               <>
-                <span className="font-mono text-[10px] text-white/35">$ codex</span>
+                <span className="text-[10px] text-white/35">$ codex</span>
                 <span className="h-2 w-40 rounded-full bg-white/6" />
                 <span className="h-2 w-28 rounded-full bg-white/4" />
               </>

@@ -34,7 +34,7 @@ export function App(): React.ReactElement {
               <DownloadButton className="mobile-primary-cta" location="hero" size="lg">
                 Download for macOS
               </DownloadButton>
-              <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-white/55">
+              <span className="flex items-center gap-1.5 text-[0.75rem] text-white/55">
                 <span className="rounded-full border border-white/12 px-1.5 py-0.5 text-white/75">
                   v{VERSION}
                 </span>
