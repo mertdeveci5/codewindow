@@ -269,17 +269,16 @@
     display: none;
   }
 
-  @media (min-width: 900px) {
+  /* The side columns mirror each other so the content stays centered in the
+     viewport. The sidebar only uses the otherwise-empty space on the left. */
+  @media (min-width: 1152px) {
     html {
       scroll-padding-top: 2rem;
     }
 
     .page {
       display: grid;
-      width: min(calc(100% - 3rem), 60rem);
-      margin-inline: auto;
-      grid-template-columns: 10.5rem minmax(0, 44rem);
-      column-gap: 3.5rem;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 44rem) minmax(0, 1fr);
     }
 
     .site-header {
@@ -290,8 +289,12 @@
       position: sticky;
       top: 0;
       z-index: 20;
+      grid-column: 1;
+      justify-self: end;
       display: flex;
+      width: 10.5rem;
       height: 100svh;
+      margin-right: 3.5rem;
       flex-direction: column;
       padding-block: 3.5rem 1.5rem;
     }
