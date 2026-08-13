@@ -26,6 +26,16 @@ export function initializeAnalytics(): void {
       api_host: apiHost,
       advanced_disable_feature_flags: true,
       autocapture: false,
+      before_send: (event) => {
+        if (!event || !new URL(window.location.href).searchParams.has("analytics_test")) {
+          return event;
+        }
+
+        return {
+          ...event,
+          properties: { ...event.properties, validation_marker: "browser_e2e" },
+        };
+      },
       capture_pageleave: true,
       capture_pageview: true,
       disable_session_recording: true,
