@@ -1,10 +1,9 @@
-import { ArrowDownToLineIcon } from "lucide-react";
 import type React from "react";
+import { DownloadButton } from "@/components/DownloadButton";
 import { InstallationTimeline } from "@/components/InstallationTimeline";
 import { PanelDemo } from "@/components/PanelDemo";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Button } from "@/components/ui/button";
-import { DOWNLOAD_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
+import { RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 export function App(): React.ReactElement {
   return (
@@ -28,10 +27,9 @@ export function App(): React.ReactElement {
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
-              <Button render={<a href={DOWNLOAD_URL} />} size="lg">
-                <ArrowDownToLineIcon aria-hidden="true" />
+              <DownloadButton location="hero" size="lg">
                 Download for macOS
-              </Button>
+              </DownloadButton>
               <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-white/55">
                 <span className="rounded-full border border-white/12 px-1.5 py-0.5 text-white/75">
                   v{VERSION}
@@ -52,10 +50,9 @@ export function App(): React.ReactElement {
                 <h2>Get CodeWindow running</h2>
                 <p>Follow these steps once. Updates arrive inside the app after that.</p>
               </div>
-              <Button render={<a href={DOWNLOAD_URL} />} size="lg">
-                <ArrowDownToLineIcon aria-hidden="true" />
+              <DownloadButton location="install" size="lg">
                 Download for macOS
-              </Button>
+              </DownloadButton>
             </div>
             <InstallationTimeline />
             <p className="install-note">

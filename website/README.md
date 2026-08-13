@@ -26,6 +26,13 @@ npm run check       # all three
 npm run preview     # serve the production build locally
 ```
 
+## Analytics
+
+The production website uses PostHog for pageview/pageleave analytics and the explicit
+`download_clicked` event. Copy `.env.example` to `.env.production.local` and set the public project
+token before building or deploying. Download events include the button location, release version,
+platform, architecture, and destination URL. Generic autocapture and session recording are disabled.
+
 ## Deploy
 
 Wrangler uploads `dist/` to Cloudflare Workers Static Assets. The configuration does not include a

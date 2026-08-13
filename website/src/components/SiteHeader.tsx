@@ -1,12 +1,11 @@
 import {
-  ArrowDownToLineIcon,
   ExternalLinkIcon,
   GithubIcon,
   PictureInPicture2Icon,
 } from "lucide-react";
 import type React from "react";
-import { Button } from "@/components/ui/button";
-import { DOWNLOAD_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
+import { DownloadButton } from "@/components/DownloadButton";
+import { RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 const NAV_ITEMS = [
   { href: "#overview", label: "Overview" },
@@ -47,10 +46,9 @@ export function SiteHeader(): React.ReactElement {
             >
               GitHub
             </a>
-            <Button render={<a href={DOWNLOAD_URL} />} size="sm">
-              <ArrowDownToLineIcon aria-hidden="true" />
+            <DownloadButton location="header" size="sm">
               Download
-            </Button>
+            </DownloadButton>
           </div>
         </div>
       </header>
@@ -80,10 +78,9 @@ export function SiteHeader(): React.ReactElement {
             Releases
             <ExternalLinkIcon aria-hidden="true" className="sidebar-external" />
           </a>
-          <Button className="mt-2 w-full" render={<a href={DOWNLOAD_URL} />} size="sm">
-            <ArrowDownToLineIcon aria-hidden="true" />
+          <DownloadButton className="mt-2 w-full" location="sidebar" size="sm">
             Download
-          </Button>
+          </DownloadButton>
         </div>
       </aside>
     </>
