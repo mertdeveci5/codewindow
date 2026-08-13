@@ -21,8 +21,14 @@ export function initializeAnalytics(): void {
     return;
   }
 
-  initialization = import("posthog-js/dist/module.slim").then(({ default: posthog }) => {
+  initialization = Promise.all([
+    import("posthog-js/dist/module.slim"),
+    import("posthog-js/dist/extension-bundles"),
+  ]).then(([{ default: posthog }, { AnalyticsExtensions }]) => {
     posthog.init(projectKey, {
+      __extensionClasses: {
+        webVitalsAutocapture: AnalyticsExtensions.webVitalsAutocapture,
+      },
       api_host: apiHost,
       advanced_disable_feature_flags: true,
       autocapture: false,
@@ -38,6 +44,7 @@ export function initializeAnalytics(): void {
       },
       capture_pageleave: true,
       capture_pageview: true,
+      capture_performance: { web_vitals: true },
       disable_session_recording: true,
       disable_surveys: true,
       person_profiles: "identified_only",

@@ -28,9 +28,9 @@ npm run preview     # serve the production build locally
 
 ## Analytics
 
-The production website uses PostHog for pageview/pageleave analytics plus explicit, privacy-safe
-engagement events: `site_engaged`, `section_viewed`, `scroll_depth_reached`,
-`external_link_clicked`, and `download_clicked`. Copy `.env.example` to
+The production website uses PostHog for pageview/pageleave analytics, Web Vitals (LCP, CLS, FCP,
+and INP), plus explicit, privacy-safe engagement events: `site_engaged`, `section_viewed`,
+`scroll_depth_reached`, `external_link_clicked`, and `download_clicked`. Copy `.env.example` to
 `.env.production.local` and set the public project token before building or deploying. Download
 events include the button location, release version, platform, architecture, and destination URL.
 Generic autocapture and session recording are disabled. Browser checks can use the
