@@ -15,6 +15,7 @@ signing_identity=${CODEWINDOW_SIGN_IDENTITY:--}
 expected_team_id=${CODEWINDOW_EXPECTED_TEAM_ID:-}
 notary_profile=${CODEWINDOW_NOTARY_PROFILE:-}
 notary_keychain=${CODEWINDOW_NOTARY_KEYCHAIN:-}
+notary_timeout=${CODEWINDOW_NOTARY_TIMEOUT:-75m}
 require_notarization=${CODEWINDOW_REQUIRE_NOTARIZATION:-0}
 
 if [[ "$require_notarization" != "0" && "$require_notarization" != "1" ]]; then
@@ -91,7 +92,7 @@ if [[ -n "$notary_profile" ]]; then
         "$notary_archive" \
         $notary_arguments \
         --wait \
-        --timeout 30m \
+        --timeout "$notary_timeout" \
         --output-format plist \
         --no-progress > "$notary_result"; then
         if submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$notary_result" 2>/dev/null); then
@@ -105,7 +106,7 @@ if [[ -n "$notary_profile" ]]; then
         else
             /bin/cat "$notary_result" >&2
         fi
-        print -u2 -- "Apple rejected or could not process the notarization submission."
+        print -u2 -- "Apple rejected, timed out, or could not process the notarization submission."
         exit 1
     fi
 
