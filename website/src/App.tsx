@@ -22,8 +22,7 @@ export function App(): React.ReactElement {
       <div className="site-content">
         <main className="flex flex-col">
           <section className="shell pt-8 pb-7 sm:pt-16 sm:pb-8" id="overview">
-            <p className="eyebrow">macOS · Codex CLI · Claude Code · Pi</p>
-            <h1 className="hero-title mt-3">
+            <h1 className="hero-title">
               <span className="marker">Picture-in-picture</span> for your terminal coding agents.
             </h1>
             <p className="lede mt-4 max-w-[34rem]">
