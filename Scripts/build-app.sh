@@ -6,6 +6,7 @@ output_dir="$repo_dir/build"
 app_dir="$output_dir/CodeWindow.app"
 build_mode=${1:-}
 signing_identity=${CODEWINDOW_SIGN_IDENTITY:--}
+expected_team_id=${CODEWINDOW_EXPECTED_TEAM_ID:-}
 
 products=(CodeWindow codewindow-report codewindow-install)
 
@@ -96,7 +97,7 @@ sign() {
     if [[ "$signing_identity" == "-" ]]; then
         /usr/bin/codesign --force --sign - "$@"
     else
-        /usr/bin/codesign --force --options runtime --sign "$signing_identity" "$@"
+        /usr/bin/codesign --force --options runtime --timestamp --sign "$signing_identity" "$@"
     fi
 }
 
@@ -110,6 +111,26 @@ sign "$app_dir/Contents/Helpers/codewindow-report"
 sign "$app_dir/Contents/Helpers/codewindow-install"
 sign "$app_dir/Contents/MacOS/CodeWindow"
 sign "$app_dir"
-/usr/bin/codesign --verify --deep --strict "$app_dir"
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$app_dir"
+
+if [[ "$signing_identity" != "-" ]]; then
+    signature_details=$(/usr/bin/codesign --display --verbose=4 "$app_dir" 2>&1)
+    if [[ "$signature_details" != *"Authority=Developer ID Application:"* ]]; then
+        print -u2 -- "The app was not signed with a Developer ID Application certificate."
+        exit 1
+    fi
+    if [[ "$signature_details" != *"Timestamp="* ]]; then
+        print -u2 -- "The Developer ID signature is missing a secure timestamp."
+        exit 1
+    fi
+    if [[ "$signature_details" != *"Runtime Version="* ]]; then
+        print -u2 -- "The Developer ID signature is missing hardened runtime."
+        exit 1
+    fi
+    if [[ -n "$expected_team_id" && "$signature_details" != *"TeamIdentifier=$expected_team_id"* ]]; then
+        print -u2 -- "The signing certificate does not belong to team $expected_team_id."
+        exit 1
+    fi
+fi
 
 print -r -- "$app_dir"

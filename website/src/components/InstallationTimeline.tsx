@@ -19,12 +19,8 @@ const INSTALLATION_STEPS = [
     description: "Drag CodeWindow.app into your Applications folder.",
   },
   {
-    title: "Open it once",
-    description: "In Applications, right-click CodeWindow, choose Open, then confirm Open.",
-  },
-  {
-    title: "Allow it if macOS asks",
-    description: "Open System Settings, go to Privacy & Security, then choose Open Anyway.",
+    title: "Open CodeWindow",
+    description: "Open CodeWindow from Applications. macOS verifies the signed app before launch.",
   },
   {
     title: "Install the agent hooks",

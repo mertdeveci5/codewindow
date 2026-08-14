@@ -17,15 +17,15 @@ CodeWindow uses SwiftUI and AppKit. Session state is stored in small files on di
 
 The release archive includes code for Apple silicon and Intel Macs.
 
-## Install the preview release
+## Install
 
-1. Download `CodeWindow-v0.1.4-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.5-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the ZIP file.
 3. Move `CodeWindow.app` to the Applications folder.
-4. Right-click the app and choose Open.
+4. Open CodeWindow.
 5. Right-click the CodeWindow panel and choose Install or update agent hooks.
 
-This preview release is signed locally. It is not signed with an Apple Developer ID and it is not notarized. macOS may show a security warning. If the Open command does not work, open System Settings, go to Privacy & Security, and choose Open Anyway.
+Public releases are signed with a Developer ID Application certificate and notarized by Apple. The release workflow also staples the notarization ticket to the app and checks it with Gatekeeper before publishing.
 
 ## Connect terminal agents
 
@@ -64,7 +64,7 @@ open -a CodeWindow
 
 CodeWindow uses Sparkle to check for updates from GitHub once per day. Right-click the panel and choose Check for Updates to check immediately. Sparkle shows the version and asks before installing it.
 
-Every update archive and update feed is signed with a CodeWindow EdDSA key. Sparkle verifies those signatures before replacing the app. Preview releases remain ad hoc signed and are not notarized, so the first manual installation can still show a macOS security warning.
+Every update archive and update feed is signed with a CodeWindow EdDSA key. Sparkle verifies those signatures before replacing the app. Public releases are also signed with Developer ID and notarized by Apple.
 
 ## Remove CodeWindow
 
@@ -120,9 +120,26 @@ Maintainers can also create the signed Sparkle feed using the private key stored
 SPARKLE_KEY_ACCOUNT=dev.codewindow.app ./Scripts/package-release.sh
 ```
 
-Pushing a matching version tag runs the release workflow. It checks both bundle version fields and the Sparkle key, tests the app, builds the universal archive, signs `appcast.xml`, and publishes all three files to GitHub Releases. Increment both `CFBundleShortVersionString` and `CFBundleVersion` for every app release.
+Pushing a matching version tag runs the release workflow. It tests the app, imports the Developer ID certificate into a temporary keychain, builds a universal archive with hardened runtime and secure timestamps, submits it to Apple, staples the accepted ticket, checks the app with Gatekeeper, signs `appcast.xml`, and publishes the files to GitHub Releases. The workflow stops before publishing if any check fails.
 
-Set `CODEWINDOW_SIGN_IDENTITY` to a Developer ID Application identity if you have one. A public release should also be submitted to Apple's notary service before distribution. See [Signing Mac Software with Developer ID](https://developer.apple.com/developer-id/) and [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+Add these GitHub Actions secrets before creating a release tag:
+
+- `APPLE_DEVELOPER_ID_CERTIFICATE`: the exported `.p12` file, encoded with base64
+- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`: the password used when exporting the `.p12`
+- `APPLE_ID`: the Apple Account used for notarization
+- `APPLE_TEAM_ID`: the ten-character Developer Program team ID
+- `APPLE_APP_SPECIFIC_PASSWORD`: an app-specific password for the Apple Account
+- `SPARKLE_PRIVATE_KEY`: the existing CodeWindow update signing key
+
+To copy a `.p12` file as base64 on macOS, run:
+
+```sh
+/usr/bin/base64 -i DeveloperIDApplication.p12 | /usr/bin/pbcopy
+```
+
+The certificate and its private key must be exported together from Keychain Access. Do not commit the `.p12`, its password, the app-specific password, or the Sparkle key. Increment both `CFBundleShortVersionString` and `CFBundleVersion` for every release.
+
+Local builds remain ad hoc signed by default. A local Developer ID build can set `CODEWINDOW_SIGN_IDENTITY`, `CODEWINDOW_EXPECTED_TEAM_ID`, and a `notarytool` keychain profile before running `./Scripts/package-release.sh`. See [Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 
 ## Test
 

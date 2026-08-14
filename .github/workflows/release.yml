@@ -15,7 +15,7 @@ concurrency:
 jobs:
   macos:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify release version
@@ -24,13 +24,71 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$version"
       - name: Test core behavior
         run: ./Scripts/test.sh
-      - name: Build signed update feed
+      - name: Build notarized release and signed update feed
         env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_DEVELOPER_ID_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          test -n "$SPARKLE_PRIVATE_KEY"
+          set -euo pipefail
+
+          for variable in \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_DEVELOPER_ID_CERTIFICATE \
+            APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_TEAM_ID \
+            SPARKLE_PRIVATE_KEY; do
+            test -n "${!variable}"
+          done
+
+          certificate_path="$RUNNER_TEMP/codewindow-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/codewindow-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          cleanup() {
+            security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
+            /usr/bin/find "$certificate_path" -delete 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE" | /usr/bin/base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          xcrun notarytool store-credentials codewindow-ci \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$keychain_path"
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk '/Developer ID Application:/ { print $2; exit }')"
+          test -n "$signing_identity"
+
+          export CODEWINDOW_EXPECTED_TEAM_ID="$APPLE_TEAM_ID"
+          export CODEWINDOW_NOTARY_KEYCHAIN="$keychain_path"
+          export CODEWINDOW_NOTARY_PROFILE="codewindow-ci"
+          export CODEWINDOW_REQUIRE_NOTARIZATION=1
+          export CODEWINDOW_SIGN_IDENTITY="$signing_identity"
           ./Scripts/package-release.sh
+
           test -s build/appcast.xml
+          test -s build/notary-log.json
+          xcrun stapler validate build/CodeWindow.app
+          spctl --assess --type execute --verbose=4 build/CodeWindow.app
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

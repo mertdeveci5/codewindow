@@ -78,7 +78,7 @@ export function SiteHeader(): React.ReactElement {
         </nav>
 
         <div className="sidebar-footer">
-          <span className="sidebar-version">v{VERSION} preview</span>
+          <span className="sidebar-version">v{VERSION}</span>
           <a
             href={REPO_URL}
             onClick={() => captureExternalLinkClicked("github_repository", "sidebar")}

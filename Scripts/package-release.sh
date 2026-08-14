@@ -8,8 +8,49 @@ version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$repo_
 archive="$output_dir/CodeWindow-v${version}-macOS-universal.zip"
 checksum="$archive.sha256"
 appcast="$output_dir/appcast.xml"
+notary_log="$output_dir/notary-log.json"
 temporary_archive="$archive.tmp"
 temporary_checksum="$checksum.tmp"
+signing_identity=${CODEWINDOW_SIGN_IDENTITY:--}
+expected_team_id=${CODEWINDOW_EXPECTED_TEAM_ID:-}
+notary_profile=${CODEWINDOW_NOTARY_PROFILE:-}
+notary_keychain=${CODEWINDOW_NOTARY_KEYCHAIN:-}
+require_notarization=${CODEWINDOW_REQUIRE_NOTARIZATION:-0}
+
+if [[ "$require_notarization" != "0" && "$require_notarization" != "1" ]]; then
+    print -u2 -- "CODEWINDOW_REQUIRE_NOTARIZATION must be 0 or 1."
+    exit 1
+fi
+if [[ -n "$notary_keychain" && -z "$notary_profile" ]]; then
+    print -u2 -- "CODEWINDOW_NOTARY_KEYCHAIN requires CODEWINDOW_NOTARY_PROFILE."
+    exit 1
+fi
+if [[ "$require_notarization" == "1" ]]; then
+    if [[ "$signing_identity" == "-" ]]; then
+        print -u2 -- "A Developer ID Application identity is required for a notarized release."
+        exit 1
+    fi
+    if [[ -z "$expected_team_id" ]]; then
+        print -u2 -- "CODEWINDOW_EXPECTED_TEAM_ID is required for a notarized release."
+        exit 1
+    fi
+    if [[ -z "$notary_profile" ]]; then
+        print -u2 -- "CODEWINDOW_NOTARY_PROFILE is required for a notarized release."
+        exit 1
+    fi
+fi
+
+notary_arguments=()
+if [[ -n "$notary_profile" ]]; then
+    notary_arguments+=(--keychain-profile "$notary_profile")
+    if [[ -n "$notary_keychain" ]]; then
+        notary_arguments+=(--keychain "$notary_keychain")
+    fi
+fi
+
+if [[ -e "$notary_log" ]]; then
+    /usr/bin/find "$notary_log" -delete
+fi
 
 if /usr/bin/git -C "$repo_dir" diff --quiet \
     && /usr/bin/git -C "$repo_dir" diff --cached --quiet \
@@ -35,6 +76,60 @@ for executable in \
 done
 
 "$app_dir/Contents/MacOS/CodeWindow" --smoke-test
+
+if [[ -n "$notary_profile" ]]; then
+    notary_dir=$(/usr/bin/mktemp -d /tmp/codewindow-notary.XXXXXX)
+    notary_archive="$notary_dir/CodeWindow.zip"
+    notary_result="$notary_dir/result.plist"
+    cleanup_notary() {
+        /usr/bin/find "$notary_dir" -depth -delete
+    }
+    trap cleanup_notary EXIT
+
+    /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$notary_archive"
+    if ! /usr/bin/xcrun notarytool submit \
+        "$notary_archive" \
+        $notary_arguments \
+        --wait \
+        --timeout 30m \
+        --output-format plist \
+        --no-progress > "$notary_result"; then
+        if submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$notary_result" 2>/dev/null); then
+            /usr/bin/xcrun notarytool log \
+                $notary_arguments \
+                "$submission_id" \
+                "$notary_log" || true
+        fi
+        if [[ -s "$notary_log" ]]; then
+            /bin/cat "$notary_log" >&2
+        else
+            /bin/cat "$notary_result" >&2
+        fi
+        print -u2 -- "Apple rejected or could not process the notarization submission."
+        exit 1
+    fi
+
+    submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$notary_result")
+    submission_status=$(/usr/libexec/PlistBuddy -c 'Print :status' "$notary_result")
+    /usr/bin/xcrun notarytool log \
+        $notary_arguments \
+        "$submission_id" \
+        "$notary_log"
+    if [[ "$submission_status" != "Accepted" ]]; then
+        /bin/cat "$notary_log" >&2
+        print -u2 -- "Notarization finished with status: $submission_status"
+        exit 1
+    fi
+    /bin/cat "$notary_log"
+
+    /usr/bin/xcrun stapler staple "$app_dir"
+    /usr/bin/xcrun stapler validate "$app_dir"
+    /usr/bin/codesign --verify --deep --strict --verbose=2 "$app_dir"
+    /usr/sbin/spctl --assess --type execute --verbose=4 "$app_dir"
+
+    cleanup_notary
+    trap - EXIT
+fi
 
 /bin/rm -f "$temporary_archive" "$temporary_checksum"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$temporary_archive"
@@ -109,4 +204,7 @@ print -r -- "$archive"
 print -r -- "$checksum"
 if [[ -f "$appcast" ]]; then
     print -r -- "$appcast"
+fi
+if [[ -f "$notary_log" ]]; then
+    print -r -- "$notary_log"
 fi

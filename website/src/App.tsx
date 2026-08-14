@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect } from "react";
+import { CopySetupPromptButton } from "@/components/CopySetupPromptButton";
 import { DownloadButton } from "@/components/DownloadButton";
 import { InstallationTimeline } from "@/components/InstallationTimeline";
 import { PanelDemo } from "@/components/PanelDemo";
@@ -34,6 +35,7 @@ export function App(): React.ReactElement {
               <DownloadButton className="mobile-primary-cta" location="hero" size="lg">
                 Download for macOS
               </DownloadButton>
+              <CopySetupPromptButton className="mobile-primary-cta" />
               <span className="flex items-center gap-1.5 text-[0.75rem] text-white/55">
                 <span className="rounded-full border border-white/12 px-1.5 py-0.5 text-white/75">
                   v{VERSION}
@@ -60,8 +62,8 @@ export function App(): React.ReactElement {
             </div>
             <InstallationTimeline />
             <p className="install-note">
-              The download is a ZIP containing only CodeWindow.app. Preview builds are not
-              notarized. Privacy details and uninstall steps are in the{" "}
+              The download is a Developer ID signed and notarized universal app. Privacy details
+              and uninstall steps are in the{" "}
               <a
                 className="text-link"
                 href={REPO_URL}
@@ -78,7 +80,7 @@ export function App(): React.ReactElement {
 
         <footer className="site-footer">
           <div className="site-footer-content shell">
-            <span>CodeWindow v{VERSION} preview</span>
+            <span>CodeWindow v{VERSION}</span>
             <span className="flex items-center gap-4">
               <a
                 href={REPO_URL}

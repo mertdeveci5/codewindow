@@ -60,6 +60,7 @@ website/
   src/App.tsx            page content
   src/components/        SiteHeader, PanelDemo, AgentMarks
   src/components/ui/     copied coss Button, Dialog, ScrollArea, Spinner
+  public/skill.md        setup prompt copied for coding agents
   src/lib/               release links and shared utilities
   wrangler.jsonc         Cloudflare Workers Static Assets config
 ```
