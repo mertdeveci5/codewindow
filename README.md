@@ -154,7 +154,7 @@ The smoke test checks the floating window behavior, all-Spaces support, full-scr
 
 The app bundles the Codex, Claude, and Pi marks. Source links are listed in [`Resources/AgentLogos/SOURCES.md`](Resources/AgentLogos/SOURCES.md).
 
-The CodeWindow app icon uses Lucide's `picture-in-picture-2` paths with a thinner stroke. Lucide's ISC license is bundled with the app in `ThirdPartyLicenses/Lucide.txt`.
+The canonical CodeWindow app icon is `Resources/AppIcon.png`; the website favicon and `Resources/AppIcon.icns` contain size-appropriate renditions of that bitmap.
 
 ## License
 

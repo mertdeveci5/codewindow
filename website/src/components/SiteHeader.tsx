@@ -1,8 +1,4 @@
-import {
-  ExternalLinkIcon,
-  GithubIcon,
-  PictureInPicture2Icon,
-} from "lucide-react";
+import { ExternalLinkIcon, GithubIcon } from "lucide-react";
 import type React from "react";
 import { DownloadButton } from "@/components/DownloadButton";
 import { captureExternalLinkClicked } from "@/lib/analytics";
@@ -14,12 +10,15 @@ const NAV_ITEMS = [
   { href: "#install", label: "Install" },
 ] as const;
 
-/** The app mark, using the same blue surface as the primary website button. */
+/** The same bitmap mark used by the macOS app and browser favicon. */
 export function AppMark({ className }: { className?: string }): React.ReactElement {
   return (
-    <span aria-hidden="true" className={["app-mark", className].filter(Boolean).join(" ")}>
-      <PictureInPicture2Icon strokeWidth={1.25} />
-    </span>
+    <img
+      alt=""
+      aria-hidden="true"
+      className={["app-mark", className].filter(Boolean).join(" ")}
+      src="/favicon.png"
+    />
   );
 }
 

@@ -55,7 +55,7 @@ in the environment.
 ```
 website/
   index.html            document metadata, favicon, no-JS fallback
-  public/favicon.svg     copy of Resources/AppIcon.svg
+  public/favicon.png     copy of Resources/AppIcon.png
   src/index.css          design tokens, product page, panel styles
   src/App.tsx            page content
   src/components/        SiteHeader, PanelDemo, AgentMarks

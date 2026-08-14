@@ -63,8 +63,6 @@ fi
 /bin/cp "$repo_dir/Resources/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
 /bin/cp "$repo_dir/LICENSE" "$app_dir/Contents/Resources/LICENSE.txt"
 /bin/cp "$sparkle_license" "$app_dir/Contents/Resources/ThirdPartyLicenses/Sparkle.txt"
-/bin/cp "$repo_dir/Resources/ThirdPartyLicenses/Lucide.txt" \
-    "$app_dir/Contents/Resources/ThirdPartyLicenses/Lucide.txt"
 /usr/bin/ditto "$sparkle_framework" "$app_dir/Contents/Frameworks/Sparkle.framework"
 /bin/cp "$repo_dir/Resources/AgentLogos/codex.svg" "$app_dir/Contents/Resources/AgentLogos/codex.svg"
 /bin/cp "$repo_dir/Resources/AgentLogos/claude.svg" "$app_dir/Contents/Resources/AgentLogos/claude.svg"
