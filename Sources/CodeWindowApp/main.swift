@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     $0.visibleFrame.contains(panel.frame)
                 }
                 panel.setFrameOrigin(originalOrigin)
+                let momentumMoveWorks = smokeTestMomentumMovement(of: panel, from: originalOrigin)
                 let passed = panel.level == .floating
                     && behavior.contains(.canJoinAllSpaces)
                     && behavior.contains(.fullScreenAuxiliary)
@@ -106,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && hasSparkleFramework
                     && hasSparkleConfiguration
                     && trackpadMoveWorks
+                    && momentumMoveWorks
                     && validPositionWasPreserved
                     && offscreenPositionWasConstrained
                     && inspectorWorks
@@ -117,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "width=\(Int(panel.frame.width)) "
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
                         + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
-                        + "trackpad=\(trackpadMoveWorks) "
+                        + "trackpad=\(trackpadMoveWorks) momentum=\(momentumMoveWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
                         + "inspector=\(inspectorWorks) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
@@ -151,6 +153,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fputs("CodeWindow: \(error)\n", stderr)
             NSApplication.shared.terminate(nil)
         }
+    }
+
+    private func smokeTestMomentumMovement(
+        of panel: FloatingPanel,
+        from originalOrigin: NSPoint
+    ) -> Bool {
+        guard let momentumCGEvent = CGEvent(
+            scrollWheelEvent2Source: nil,
+            units: .pixel,
+            wheelCount: 2,
+            wheel1: 0,
+            wheel2: 8,
+            wheel3: 0
+        ) else { return false }
+
+        momentumCGEvent.setIntegerValueField(
+            .scrollWheelEventMomentumPhase,
+            value: Int64(CGMomentumScrollPhase.continuous.rawValue)
+        )
+        guard let momentumEvent = NSEvent(cgEvent: momentumCGEvent),
+              let cursorBefore = CGEvent(source: nil)?.location
+        else { return false }
+
+        defer { panel.setFrameOrigin(originalOrigin) }
+        panel.sendEvent(momentumEvent)
+        guard let cursorAfter = CGEvent(source: nil)?.location else { return false }
+
+        let expectedOrigin = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? originalOrigin
+            : NSPoint(x: originalOrigin.x - 8, y: originalOrigin.y)
+        return momentumEvent.momentumPhase.contains(.changed)
+            && panel.frame.origin == expectedOrigin
+            && cursorAfter == cursorBefore
     }
 
     func applicationShouldHandleReopen(

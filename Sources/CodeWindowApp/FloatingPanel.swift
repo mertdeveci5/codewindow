@@ -31,22 +31,28 @@ final class FloatingPanel: NSPanel {
             return
         }
 
-        // Momentum can continue after the pointer has left the panel. Keep this a direct
-        // two-finger gesture instead, so the island stops when the user's fingers stop.
-        if event.momentumPhase.isEmpty {
-            // This is a drag gesture, not scrolling. Remove the user's scroll-direction
-            // preference so the panel always follows the physical finger movement.
-            let directionCorrection: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
-            if let movement = moveByTrackpad(
-                deltaX: event.scrollingDeltaX * directionCorrection,
-                deltaY: event.scrollingDeltaY * directionCorrection
-            ) {
+        // This is a drag gesture, not scrolling. Remove the user's scroll-direction
+        // preference so the panel always follows the physical finger movement.
+        let directionCorrection: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
+        let isMomentum = !event.momentumPhase.isEmpty
+        if isMomentum && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            releaseCursor()
+            return
+        }
+
+        if let movement = moveByTrackpad(
+            deltaX: event.scrollingDeltaX * directionCorrection,
+            deltaY: event.scrollingDeltaY * directionCorrection
+        ) {
+            // Keep the pointer attached only while the user's fingers are touching the
+            // trackpad. Native momentum then throws the panel while the pointer stays put.
+            if !isMomentum {
                 captureCursor(movingBy: movement)
             }
         }
 
         if event.phase.contains(.ended) || event.phase.contains(.cancelled)
-            || !event.momentumPhase.isEmpty
+            || isMomentum
         {
             releaseCursor()
         }
