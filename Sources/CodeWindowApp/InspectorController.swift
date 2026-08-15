@@ -22,6 +22,7 @@ final class InspectorController: NSObject {
     private var hoveredSessionID: String?
     private var inspectorIsHovered = false
     private var pendingTransition: DispatchWorkItem?
+    private var transitionGeneration = 0
 
     init(parentPanel: FloatingPanel, store: SessionStore) {
         self.parentPanel = parentPanel
@@ -80,7 +81,8 @@ final class InspectorController: NSObject {
         pendingTransition = nil
         hoveredSessionID = nil
         inspectorIsHovered = false
-        dismiss()
+        transitionGeneration &+= 1
+        hidePanel()
     }
 
     func relayout() {
@@ -102,13 +104,19 @@ final class InspectorController: NSObject {
     }
 
     private func present(_ session: PresentedSession) {
+        transitionGeneration &+= 1
         model.session = store.sessions.first(where: { $0.id == session.id }) ?? session
         let panel = inspectorPanel()
         relayout()
         if panel.parent !== parentPanel {
             parentPanel.addChildWindow(panel, ordered: .above)
         }
-        panel.orderFrontRegardless()
+        let wasVisible = panel.isVisible
+        if !wasVisible {
+            panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
+            panel.orderFrontRegardless()
+        }
+        animate(panel: panel, to: 1, duration: 0.14)
     }
 
     private func inspectorPanel() -> InspectorPanel {
@@ -126,6 +134,7 @@ final class InspectorController: NSObject {
             defer: false
         )
         panel.configureForCodeWindow()
+        panel.alphaValue = 0
         panel.contentView = NSHostingView(rootView: InspectorContentView(
             store: store,
             model: model,
@@ -165,6 +174,47 @@ final class InspectorController: NSObject {
 
     private func dismiss() {
         guard let panel else { return }
+        transitionGeneration &+= 1
+        let generation = transitionGeneration
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            hidePanel(ifCurrent: generation)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.10
+            context.allowsImplicitAnimation = true
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self, weak panel] in
+            Task { @MainActor in
+                guard let self, let panel, self.panel === panel else { return }
+                self.hidePanel(ifCurrent: generation)
+            }
+        }
+    }
+
+    private func animate(panel: NSPanel, to alpha: CGFloat, duration: TimeInterval) {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            panel.alphaValue = alpha
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.allowsImplicitAnimation = true
+            panel.animator().alphaValue = alpha
+        }
+    }
+
+    private func hidePanel(ifCurrent generation: Int) {
+        guard transitionGeneration == generation,
+              hoveredSessionID == nil,
+              !inspectorIsHovered
+        else { return }
+        hidePanel()
+    }
+
+    private func hidePanel() {
+        guard let panel else { return }
+        panel.alphaValue = 0
         if panel.parent === parentPanel {
             parentPanel.removeChildWindow(panel)
         }

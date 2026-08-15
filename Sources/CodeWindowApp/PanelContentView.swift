@@ -15,12 +15,16 @@ struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     let reportHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
+    let checkHooks: () async -> Bool
     let checkForUpdates: () -> Void
     let hidePanel: () -> Void
     let activateTerminal: (PresentedSession) -> Bool
     let hoverSession: (PresentedSession, Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("hookSetupPromptDismissed") private var hookSetupPromptDismissed = false
+    @State private var hooksInstalled: Bool?
+    @State private var isInstallingHooks = false
     @State private var notice: PanelNotice?
 
     var body: some View {
@@ -40,9 +44,15 @@ struct PanelContentView: View {
                 }
             }
             .onPreferenceChange(PanelHeightKey.self, perform: reportHeight)
+            .task {
+                let installed = await checkHooks()
+                if hooksInstalled == nil {
+                    hooksInstalled = installed
+                }
+            }
             .contextMenu {
                 Button("Install or update agent hooks…") {
-                    Task { show(await installHooks()) }
+                    Task { await installAgentHooks() }
                 }
                 Button("Check for Updates…", action: checkForUpdates)
                 Divider()
@@ -58,6 +68,14 @@ struct PanelContentView: View {
             if let notice {
                 NoticeRow(notice: notice)
                     .transition(.opacity)
+            }
+            if hooksInstalled == false, !hookSetupPromptDismissed {
+                HookSetupRow(
+                    isInstalling: isInstallingHooks,
+                    install: { Task { await installAgentHooks() } },
+                    dismiss: { hookSetupPromptDismissed = true }
+                )
+                .transition(.opacity)
             }
             if store.sessions.isEmpty {
                 EmptyRow()
@@ -76,7 +94,20 @@ struct PanelContentView: View {
             }
         }
         .animation(motion, value: store.sessions.map(\.id))
+        .animation(motion, value: hooksInstalled)
         .animation(motion, value: notice)
+    }
+
+    private func installAgentHooks() async {
+        guard !isInstallingHooks else { return }
+        isInstallingHooks = true
+        let result = await installHooks()
+        isInstallingHooks = false
+        if result.succeeded {
+            hooksInstalled = true
+            hookSetupPromptDismissed = false
+        }
+        show(result)
     }
 
     private func select(_ session: PresentedSession) {
@@ -105,6 +136,62 @@ struct PanelContentView: View {
 }
 
 // MARK: - Rows
+
+private struct HookSetupRow: View {
+    let isInstalling: Bool
+    let install: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: PanelMetrics.glyphGap) {
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(PanelPalette.working)
+                .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
+
+            VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
+                Text("Connect your agents")
+                    .font(.system(size: PanelMetrics.actionSize, weight: .regular))
+                    .foregroundStyle(PanelPalette.title)
+                Text("Install hooks for live updates")
+                    .font(.system(size: PanelMetrics.metaSize, weight: .regular))
+                    .foregroundStyle(PanelPalette.meta)
+            }
+
+            Spacer(minLength: 4)
+
+            Button(action: install) {
+                Text(isInstalling ? "Installing…" : "Install")
+                    .font(.system(size: PanelMetrics.metaSize, weight: .medium))
+                    .foregroundStyle(PanelPalette.title)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                    .contentShape(Capsule())
+            }
+                .buttonStyle(.plain)
+                .disabled(isInstalling)
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(PanelPalette.meta)
+                    .frame(width: 16, height: 20)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Not now")
+        }
+        .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
+        .frame(height: PanelMetrics.rowHeight)
+        .overlay(alignment: .bottom) {
+            PanelPalette.divider
+                .frame(height: PanelMetrics.separatorHeight)
+                .padding(.leading, PanelMetrics.separatorInset)
+                .padding(.trailing, PanelMetrics.rowInsetHorizontal)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
 
 private struct NoticeRow: View {
     let notice: PanelNotice

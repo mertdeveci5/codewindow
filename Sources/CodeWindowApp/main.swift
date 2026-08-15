@@ -5,6 +5,11 @@ import Darwin
 import Sparkle
 import SwiftUI
 
+private struct InstallerCommandResult: Sendable {
+    let terminationStatus: Int32
+    let output: String
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel?
@@ -60,7 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             if isSmokeTest {
                 panel.orderFrontRegardless()
-                if let session = store.sessions.first(where: { $0.id == "smoke-session" }) {
+                let smokeSession = store.sessions.first(where: { $0.id == "smoke-session" })
+                if let session = smokeSession {
                     inspector?.rowHoverChanged(session, isHovered: true)
                     RunLoop.current.run(until: Date().addingTimeInterval(0.2))
                 }
@@ -69,6 +75,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && inspectorPanel?.frame.width == PanelMetrics.width
                     && abs((inspectorPanel?.frame.maxX ?? 0) - panel.frame.minX + PanelMetrics.inspectorGap) < 0.5
                     && store.feeds["smoke-session"]?.count == 1
+                let inspectorTransitionWorks: Bool
+                if let session = smokeSession {
+                    inspector?.rowHoverChanged(session, isHovered: false)
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.28))
+                    inspector?.rowHoverChanged(session, isHovered: true)
+                    let transitionDeadline = Date().addingTimeInterval(1)
+                    while (inspectorPanel?.alphaValue ?? 0) <= 0.95, Date() < transitionDeadline {
+                        RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+                    }
+                    inspectorTransitionWorks = inspectorPanel?.isVisible == true
+                        && (inspectorPanel?.alphaValue ?? 0) > 0.95
+                } else {
+                    inspectorTransitionWorks = false
+                }
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
@@ -111,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && validPositionWasPreserved
                     && offscreenPositionWasConstrained
                     && inspectorWorks
+                    && inspectorTransitionWorks
                 print(
                     "floating=\(panel.level == .floating) "
                         + "allSpaces=\(behavior.contains(.canJoinAllSpaces)) "
@@ -121,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
                         + "trackpad=\(trackpadMoveWorks) momentum=\(momentumMoveWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
-                        + "inspector=\(inspectorWorks) "
+                        + "inspector=\(inspectorWorks) transition=\(inspectorTransitionWorks) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
                 )
                 inspector?.dismissImmediately()
@@ -221,6 +242,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
                 }
                 return await self.installHooks()
+            },
+            checkHooks: { [weak self] in
+                await self?.hooksAreInstalled() ?? false
             },
             checkForUpdates: { [weak self] in
                 self?.updaterController?.checkForUpdates(nil)
@@ -335,30 +359,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installHooks() async -> PanelNotice {
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
-        return await Task.detached(priority: .userInitiated) {
-            Self.runInstaller(at: helper)
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.runInstaller(at: helper, command: "install")
         }.value
+        guard result.terminationStatus == 0 else {
+            return PanelNotice(message: Self.installerFailureMessage(result.output), succeeded: false)
+        }
+        return PanelNotice(message: "hooks installed · restart agents, then run /hooks", succeeded: true)
     }
 
-    nonisolated private static func runInstaller(at helper: URL) -> PanelNotice {
+    private func hooksAreInstalled() async -> Bool {
+        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
+        let result = await Task.detached(priority: .utility) {
+            Self.runInstaller(at: helper, command: "status")
+        }.value
+        return result.terminationStatus == 0
+    }
+
+    nonisolated private static func runInstaller(at helper: URL, command: String) -> InstallerCommandResult {
         let process = Process()
         process.executableURL = helper
-        process.arguments = ["install"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.arguments = [command]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
 
         do {
             try process.run()
+            output.fileHandleForWriting.closeFile()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                return PanelNotice(message: "hooks installed · restart agents", succeeded: true)
-            }
-            return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
+            return InstallerCommandResult(
+                terminationStatus: process.terminationStatus,
+                output: String(decoding: data, as: UTF8.self)
+            )
         } catch {
-            return PanelNotice(message: "setup failed · use the Terminal command", succeeded: false)
+            output.fileHandleForWriting.closeFile()
+            return InstallerCommandResult(
+                terminationStatus: -1,
+                output: "The installer could not start. Reinstall CodeWindow and try again."
+            )
         }
     }
 
+    nonisolated private static func installerFailureMessage(_ output: String) -> String {
+        let detail = output
+            .split(whereSeparator: \.isNewline)
+            .last
+            .map(String.init)?
+            .replacingOccurrences(of: "codewindow-install: ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let detail, !detail.isEmpty else { return "setup failed · reinstall CodeWindow and try again" }
+        return "setup failed · \(detail.prefix(96))"
+    }
 }
 
 let application = NSApplication.shared

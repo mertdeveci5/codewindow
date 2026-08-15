@@ -87,8 +87,35 @@ jobs:
 
           test -s build/appcast.xml
           test -s build/notary-log.json
+          test -s build/dmg-notary-log.json
           xcrun stapler validate build/CodeWindow.app
           spctl --assess --type execute --verbose=4 build/CodeWindow.app
+      - name: Verify distributable disk image
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
+          disk_image="build/CodeWindow-v${version}-macOS-universal.dmg"
+          test -s "$disk_image"
+          (cd build && shasum -a 256 -c "CodeWindow-v${version}-macOS-universal.dmg.sha256")
+          xcrun stapler validate "$disk_image"
+          codesign --verify --strict --verbose=2 "$disk_image"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$disk_image"
+
+          mount_point="$RUNNER_TEMP/codewindow-dmg"
+          mkdir -p "$mount_point"
+          cleanup_mount() {
+            hdiutil detach "$mount_point" >/dev/null 2>&1 || true
+          }
+          trap cleanup_mount EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$disk_image" >/dev/null
+          test -d "$mount_point/CodeWindow.app"
+          test -L "$mount_point/Applications"
+          test "$(readlink "$mount_point/Applications")" = "/Applications"
+          xcrun stapler validate "$mount_point/CodeWindow.app"
+          codesign --verify --deep --strict --verbose=2 "$mount_point/CodeWindow.app"
+          spctl --assess --type execute --verbose=4 "$mount_point/CodeWindow.app"
+          cleanup_mount
+          trap - EXIT
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -97,6 +124,8 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "build/CodeWindow-v${version}-macOS-universal.zip" \
             "build/CodeWindow-v${version}-macOS-universal.zip.sha256" \
+            "build/CodeWindow-v${version}-macOS-universal.dmg" \
+            "build/CodeWindow-v${version}-macOS-universal.dmg.sha256" \
             build/appcast.xml \
             --verify-tag \
             --title "CodeWindow $version" \

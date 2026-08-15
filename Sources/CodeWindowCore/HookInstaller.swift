@@ -4,10 +4,58 @@ import Foundation
 public struct InstallLocations: Sendable {
     public let home: URL
     public let reporterSource: URL
+    public let codexHomes: [URL]
 
-    public init(home: URL, reporterSource: URL) {
+    public init(home: URL, reporterSource: URL, codexHomes: [URL]? = nil) {
         self.home = home
         self.reporterSource = reporterSource
+        self.codexHomes = codexHomes.flatMap { $0.isEmpty ? nil : $0 }
+            ?? [home.appendingPathComponent(".codex", isDirectory: true)]
+    }
+
+    public static func detectingCodexProfiles(
+        home: URL,
+        reporterSource: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> InstallLocations {
+        var candidates: [URL] = []
+        if let configuredHome = environment["CODEX_HOME"], !configuredHome.isEmpty {
+            let expanded = (configuredHome as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded, relativeTo: home).standardizedFileURL
+            candidates.append(url)
+        }
+
+        candidates.append(home.appendingPathComponent(".codex", isDirectory: true))
+        let profileKeys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        let profiles = (try? FileManager.default.contentsOfDirectory(
+            at: home,
+            includingPropertiesForKeys: Array(profileKeys)
+        )) ?? []
+        candidates.append(contentsOf: profiles
+            .filter { url in
+                let prefix = ".codex-"
+                guard url.lastPathComponent.hasPrefix(prefix) else { return false }
+                let label = url.lastPathComponent.dropFirst(prefix.count).lowercased()
+                let archivedLabels = ["backup", "backups", "old", "archive", "archived"]
+                guard !archivedLabels.contains(where: { label == $0 || label.hasPrefix("\($0)-") }) else {
+                    return false
+                }
+                guard let values = try? url.resourceValues(forKeys: profileKeys),
+                      values.isDirectory == true,
+                      values.isSymbolicLink != true
+                else { return false }
+                return FileManager.default.fileExists(
+                    atPath: url.appendingPathComponent("config.toml").path
+                )
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent })
+
+        var seen: Set<String> = []
+        let codexHomes = candidates.compactMap { candidate -> URL? in
+            let canonical = candidate.resolvingSymlinksInPath().standardizedFileURL
+            return seen.insert(canonical.path).inserted ? canonical : nil
+        }
+        return InstallLocations(home: home, reporterSource: reporterSource, codexHomes: codexHomes)
     }
 
     public var supportDirectory: URL {
@@ -18,8 +66,12 @@ public struct InstallLocations: Sendable {
         supportDirectory.appendingPathComponent("bin/codewindow-report")
     }
 
+    public var codexConfigurations: [URL] {
+        codexHomes.map { $0.appendingPathComponent("hooks.json") }
+    }
+
     public var codexConfiguration: URL {
-        home.appendingPathComponent(".codex/hooks.json")
+        codexConfigurations[0]
     }
 
     public var claudeConfiguration: URL {
@@ -51,7 +103,9 @@ public enum HookInstaller {
         guard FileManager.default.isExecutableFile(atPath: locations.reporterSource.path) else {
             throw InstallerError.reporterMissing
         }
-        try preflightConfiguration(at: locations.codexConfiguration, events: codexEvents)
+        for configuration in locations.codexConfigurations {
+            try preflightConfiguration(at: configuration, events: codexEvents)
+        }
         try preflightConfiguration(at: locations.claudeConfiguration, events: claudeEvents)
         try preflightPiExtension(at: locations.piExtension)
 
@@ -67,13 +121,15 @@ public enum HookInstaller {
         let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
         let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
 
-        if try updateConfiguration(
-            at: locations.codexConfiguration,
-            events: codexEvents,
-            command: codexCommand,
-            operation: .install
-        ) {
-            changed.append(locations.codexConfiguration)
+        for configuration in locations.codexConfigurations {
+            if try updateConfiguration(
+                at: configuration,
+                events: codexEvents,
+                command: codexCommand,
+                operation: .install
+            ) {
+                changed.append(configuration)
+            }
         }
 
         if try updateConfiguration(
@@ -90,7 +146,9 @@ public enum HookInstaller {
     }
 
     public static func uninstall(at locations: InstallLocations) throws -> InstallationResult {
-        try preflightConfiguration(at: locations.codexConfiguration, events: codexEvents)
+        for configuration in locations.codexConfigurations {
+            try preflightConfiguration(at: configuration, events: codexEvents)
+        }
         try preflightConfiguration(at: locations.claudeConfiguration, events: claudeEvents)
 
         return try withRollback(at: installationTargets(locations)) {
@@ -103,13 +161,15 @@ public enum HookInstaller {
         let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
         let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
 
-        if try updateConfiguration(
-            at: locations.codexConfiguration,
-            events: codexEvents,
-            command: codexCommand,
-            operation: .uninstall
-        ) {
-            changed.append(locations.codexConfiguration)
+        for configuration in locations.codexConfigurations {
+            if try updateConfiguration(
+                at: configuration,
+                events: codexEvents,
+                command: codexCommand,
+                operation: .uninstall
+            ) {
+                changed.append(configuration)
+            }
         }
 
         if try updateConfiguration(
@@ -130,11 +190,10 @@ public enum HookInstaller {
         if try removeSupportDirectory(at: locations.supportDirectory) {
             changed.append(locations.supportDirectory)
         }
-        for configuration in [locations.codexConfiguration, locations.claudeConfiguration] {
+        for configuration in locations.codexConfigurations + [locations.claudeConfiguration] {
             changed.append(contentsOf: try removeLegacyBackups(for: configuration))
         }
-        for directory in [
-            locations.codexConfiguration.deletingLastPathComponent(),
+        for directory in locations.codexConfigurations.map({ $0.deletingLastPathComponent() }) + [
             locations.claudeConfiguration.deletingLastPathComponent(),
             locations.piExtension.deletingLastPathComponent(),
         ] {
@@ -144,13 +203,14 @@ public enum HookInstaller {
     }
 
     private static func installationTargets(_ locations: InstallLocations) -> [URL] {
-        var targets = [
+        var targets = locations.codexConfigurations + [
             locations.installedReporter,
-            locations.codexConfiguration,
             locations.claudeConfiguration,
             locations.piExtension,
         ]
-        targets.append(contentsOf: legacyBackups(for: locations.codexConfiguration))
+        for configuration in locations.codexConfigurations {
+            targets.append(contentsOf: legacyBackups(for: configuration))
+        }
         targets.append(contentsOf: legacyBackups(for: locations.claudeConfiguration))
         return targets
     }
@@ -195,7 +255,9 @@ public enum HookInstaller {
         let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
         let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
         return FileManager.default.isExecutableFile(atPath: locations.installedReporter.path)
-            && configuration(at: locations.codexConfiguration, contains: codexCommand, for: codexEvents)
+            && locations.codexConfigurations.allSatisfy {
+                configuration(at: $0, contains: codexCommand, for: codexEvents)
+            }
             && configuration(at: locations.claudeConfiguration, contains: claudeCommand, for: claudeEvents)
             && ((try? String(contentsOf: locations.piExtension, encoding: .utf8).contains(piMarker)) == true)
     }
@@ -535,7 +597,7 @@ public enum InstallerError: Error, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .reporterMissing: "The reporter executable is missing. Build CodeWindow first."
+        case .reporterMissing: "The reporter executable is missing. Reinstall CodeWindow and try again."
         case let .invalidConfiguration(url): "Invalid JSON configuration: \(url.path)"
         case let .unsupportedHookStructure(url): "Unsupported hooks structure in \(url.path); no changes were made."
         case .piExtensionAlreadyExists: "A non-CodeWindow Pi extension already exists at codewindow.ts."

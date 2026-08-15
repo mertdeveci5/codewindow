@@ -7,10 +7,15 @@ app_dir="$output_dir/CodeWindow.app"
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$repo_dir/Resources/Info.plist")
 archive="$output_dir/CodeWindow-v${version}-macOS-universal.zip"
 checksum="$archive.sha256"
+disk_image="$output_dir/CodeWindow-v${version}-macOS-universal.dmg"
+disk_image_checksum="$disk_image.sha256"
 appcast="$output_dir/appcast.xml"
 notary_log="$output_dir/notary-log.json"
+disk_image_notary_log="$output_dir/dmg-notary-log.json"
 temporary_archive="$archive.tmp"
 temporary_checksum="$checksum.tmp"
+temporary_disk_image="$disk_image.tmp.dmg"
+temporary_disk_image_checksum="$disk_image_checksum.tmp"
 signing_identity=${CODEWINDOW_SIGN_IDENTITY:--}
 expected_team_id=${CODEWINDOW_EXPECTED_TEAM_ID:-}
 notary_profile=${CODEWINDOW_NOTARY_PROFILE:-}
@@ -49,9 +54,61 @@ if [[ -n "$notary_profile" ]]; then
     fi
 fi
 
-if [[ -e "$notary_log" ]]; then
-    /usr/bin/find "$notary_log" -delete
-fi
+for log in "$notary_log" "$disk_image_notary_log"; do
+    if [[ -e "$log" ]]; then
+        /usr/bin/find "$log" -delete
+    fi
+done
+
+submit_notarization() {
+    local artifact=$1
+    local log=$2
+    local working_directory
+    local result
+    local submission_id
+    local submission_status
+    working_directory=$(/usr/bin/mktemp -d /tmp/codewindow-notary.XXXXXX)
+    result="$working_directory/result.plist"
+
+    if ! /usr/bin/xcrun notarytool submit \
+        "$artifact" \
+        $notary_arguments \
+        --wait \
+        --timeout "$notary_timeout" \
+        --output-format plist \
+        --no-progress > "$result"; then
+        if submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$result" 2>/dev/null); then
+            /usr/bin/xcrun notarytool log \
+                $notary_arguments \
+                "$submission_id" \
+                "$log" || true
+        fi
+        if [[ -s "$log" ]]; then
+            /bin/cat "$log" >&2
+        else
+            /bin/cat "$result" >&2
+        fi
+        /usr/bin/find "$working_directory" -depth -delete
+        print -u2 -- "Apple rejected, timed out, or could not process the notarization submission."
+        return 1
+    fi
+
+    submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$result")
+    submission_status=$(/usr/libexec/PlistBuddy -c 'Print :status' "$result")
+    /usr/bin/xcrun notarytool log \
+        $notary_arguments \
+        "$submission_id" \
+        "$log"
+    if [[ "$submission_status" != "Accepted" ]]; then
+        /bin/cat "$log" >&2
+        /usr/bin/find "$working_directory" -depth -delete
+        print -u2 -- "Notarization finished with status: $submission_status"
+        return 1
+    fi
+    /bin/cat "$log"
+    /usr/bin/find "$working_directory" -depth -delete
+    return 0
+}
 
 if /usr/bin/git -C "$repo_dir" diff --quiet \
     && /usr/bin/git -C "$repo_dir" diff --cached --quiet \
@@ -81,47 +138,13 @@ done
 if [[ -n "$notary_profile" ]]; then
     notary_dir=$(/usr/bin/mktemp -d /tmp/codewindow-notary.XXXXXX)
     notary_archive="$notary_dir/CodeWindow.zip"
-    notary_result="$notary_dir/result.plist"
     cleanup_notary() {
         /usr/bin/find "$notary_dir" -depth -delete
     }
     trap cleanup_notary EXIT
 
     /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$notary_archive"
-    if ! /usr/bin/xcrun notarytool submit \
-        "$notary_archive" \
-        $notary_arguments \
-        --wait \
-        --timeout "$notary_timeout" \
-        --output-format plist \
-        --no-progress > "$notary_result"; then
-        if submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$notary_result" 2>/dev/null); then
-            /usr/bin/xcrun notarytool log \
-                $notary_arguments \
-                "$submission_id" \
-                "$notary_log" || true
-        fi
-        if [[ -s "$notary_log" ]]; then
-            /bin/cat "$notary_log" >&2
-        else
-            /bin/cat "$notary_result" >&2
-        fi
-        print -u2 -- "Apple rejected, timed out, or could not process the notarization submission."
-        exit 1
-    fi
-
-    submission_id=$(/usr/libexec/PlistBuddy -c 'Print :id' "$notary_result")
-    submission_status=$(/usr/libexec/PlistBuddy -c 'Print :status' "$notary_result")
-    /usr/bin/xcrun notarytool log \
-        $notary_arguments \
-        "$submission_id" \
-        "$notary_log"
-    if [[ "$submission_status" != "Accepted" ]]; then
-        /bin/cat "$notary_log" >&2
-        print -u2 -- "Notarization finished with status: $submission_status"
-        exit 1
-    fi
-    /bin/cat "$notary_log"
+    submit_notarization "$notary_archive" "$notary_log" || exit 1
 
     /usr/bin/xcrun stapler staple "$app_dir"
     /usr/bin/xcrun stapler validate "$app_dir"
@@ -131,6 +154,37 @@ if [[ -n "$notary_profile" ]]; then
     cleanup_notary
     trap - EXIT
 fi
+
+dmg_staging=$(/usr/bin/mktemp -d /tmp/codewindow-dmg.XXXXXX)
+cleanup_dmg() {
+    /usr/bin/find "$dmg_staging" -depth -delete
+}
+trap cleanup_dmg EXIT
+/usr/bin/ditto "$app_dir" "$dmg_staging/CodeWindow.app"
+/bin/ln -s /Applications "$dmg_staging/Applications"
+/bin/rm -f "$temporary_disk_image" "$temporary_disk_image_checksum"
+/usr/bin/hdiutil create \
+    -volname "CodeWindow" \
+    -srcfolder "$dmg_staging" \
+    -format UDZO \
+    -ov \
+    "$temporary_disk_image"
+
+if [[ "$signing_identity" != "-" ]]; then
+    /usr/bin/codesign --force --timestamp --sign "$signing_identity" "$temporary_disk_image"
+fi
+if [[ -n "$notary_profile" ]]; then
+    submit_notarization "$temporary_disk_image" "$disk_image_notary_log" || exit 1
+    /usr/bin/xcrun stapler staple "$temporary_disk_image"
+    /usr/bin/xcrun stapler validate "$temporary_disk_image"
+fi
+/bin/mv -f "$temporary_disk_image" "$disk_image"
+disk_image_checksum_value=$(/usr/bin/shasum -a 256 "$disk_image")
+disk_image_checksum_value=${disk_image_checksum_value%% *}
+print -r -- "$disk_image_checksum_value  ${disk_image:t}" > "$temporary_disk_image_checksum"
+/bin/mv -f "$temporary_disk_image_checksum" "$disk_image_checksum"
+cleanup_dmg
+trap - EXIT
 
 /bin/rm -f "$temporary_archive" "$temporary_checksum"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$temporary_archive"
@@ -203,9 +257,14 @@ fi
 
 print -r -- "$archive"
 print -r -- "$checksum"
+print -r -- "$disk_image"
+print -r -- "$disk_image_checksum"
 if [[ -f "$appcast" ]]; then
     print -r -- "$appcast"
 fi
 if [[ -f "$notary_log" ]]; then
     print -r -- "$notary_log"
+fi
+if [[ -f "$disk_image_notary_log" ]]; then
+    print -r -- "$disk_image_notary_log"
 fi

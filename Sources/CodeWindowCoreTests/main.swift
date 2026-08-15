@@ -506,7 +506,15 @@ func testHookInstaller() throws {
     let reporter = root.appendingPathComponent("source-reporter")
     try Data("reporter".utf8).write(to: reporter)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reporter.path)
-    let locations = InstallLocations(home: root.appendingPathComponent("home"), reporterSource: reporter)
+    let home = root.appendingPathComponent("home")
+    let locations = InstallLocations(
+        home: home,
+        reporterSource: reporter,
+        codexHomes: [
+            home.appendingPathComponent(".codex"),
+            home.appendingPathComponent(".codex-work"),
+        ]
+    )
     let original: [String: Any] = [
         "model": "keep-me",
         "hooks": [
@@ -517,7 +525,9 @@ func testHookInstaller() throws {
         ],
     ]
     try writeJSON(original, to: locations.claudeConfiguration)
-    try writeJSON(original, to: locations.codexConfiguration)
+    for configuration in locations.codexConfigurations {
+        try writeJSON(original, to: configuration)
+    }
     try FileManager.default.setAttributes(
         [.posixPermissions: 0o640],
         ofItemAtPath: locations.claudeConfiguration.path
@@ -535,8 +545,11 @@ func testHookInstaller() throws {
     try require(installedCodex["model"] as? String == "keep-me", "Codex config field lost")
     try require(installedClaude["model"] as? String == "keep-me", "Claude config field lost")
     let codexHooks = try unwrap(installedCodex["hooks"] as? [String: Any], "Codex hooks missing")
+    let secondCodex = try readJSON(locations.codexConfigurations[1])
+    let secondCodexHooks = try unwrap(secondCodex["hooks"] as? [String: Any], "Second Codex profile hooks missing")
     let claudeHooks = try unwrap(installedClaude["hooks"] as? [String: Any], "Claude hooks missing")
     try require(codexHooks["PostToolUse"] != nil, "Codex tool completion hook missing")
+    try require(secondCodexHooks["PostToolUse"] != nil, "Second Codex profile tool hook missing")
     try require(claudeHooks["PostToolUseFailure"] != nil, "Claude tool failure hook missing")
     try require(claudeHooks["Notification"] != nil, "Claude notification hook missing")
     let installedCodexMode = try unwrap(
@@ -567,12 +580,47 @@ func testHookInstaller() throws {
     _ = try HookInstaller.uninstall(at: locations)
     try require(!HookInstaller.isInstalled(at: locations), "Uninstall status is true")
     let finalCodex = try readJSON(locations.codexConfiguration)
+    let finalSecondCodex = try readJSON(locations.codexConfigurations[1])
     let finalClaude = try readJSON(locations.claudeConfiguration)
     try require(NSDictionary(dictionary: finalCodex).isEqual(to: original), "Codex config did not round trip")
+    try require(
+        NSDictionary(dictionary: finalSecondCodex).isEqual(to: original),
+        "Second Codex profile did not round trip"
+    )
     try require(NSDictionary(dictionary: finalClaude).isEqual(to: original), "Claude config did not round trip")
     try require(!FileManager.default.fileExists(atPath: locations.piExtension.path), "Pi extension remains")
     try require(!FileManager.default.fileExists(atPath: locations.installedReporter.path), "Reporter remains")
     try require(!FileManager.default.fileExists(atPath: locations.supportDirectory.path), "Support directory remains")
+}
+
+func testCodexProfileDiscovery() throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let home = root.appendingPathComponent("home", isDirectory: true)
+    try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    let standard = home.appendingPathComponent(".codex", isDirectory: true)
+    let active = home.appendingPathComponent(".codex-mertdev", isDirectory: true)
+    let backup = home.appendingPathComponent(".codex-backup-2025", isDirectory: true)
+    let incomplete = home.appendingPathComponent(".codex-empty", isDirectory: true)
+    for directory in [standard, active, backup, incomplete] {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+    for directory in [standard, active, backup] {
+        try Data("model = \"test\"\n".utf8).write(to: directory.appendingPathComponent("config.toml"))
+    }
+
+    let locations = InstallLocations.detectingCodexProfiles(
+        home: home,
+        reporterSource: root.appendingPathComponent("reporter"),
+        environment: ["CODEX_HOME": active.path]
+    )
+    let discovered = Set(locations.codexHomes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+    let expected = Set([standard, active].map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+    try require(discovered == expected, "Codex profile discovery was not safely scoped")
+    try require(locations.codexHomes.count == 2, "Codex profile discovery did not deduplicate CODEX_HOME")
+
+    let normalized = InstallLocations(home: home, reporterSource: locations.reporterSource, codexHomes: [])
+    try require(normalized.codexHomes.count == 1, "Empty Codex profile input was not normalized")
 }
 
 func testInstallRollback() throws {
@@ -728,6 +776,7 @@ let tests: [(String, () throws -> Void)] = [
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
     ("terminal application ownership", testApplicationOwnership),
+    ("Codex profile discovery", testCodexProfileDiscovery),
     ("hook installer", testHookInstaller),
     ("install rollback", testInstallRollback),
     ("clean uninstall", testCleanUninstall),
