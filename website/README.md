@@ -40,7 +40,8 @@ the dashboard insights.
 ## Deploy
 
 Wrangler uploads `dist/` to Cloudflare Workers Static Assets. The configuration does not include a
-Worker script or binding.
+Worker script or binding. Production is served from <https://codewindow.app>; the generated
+`workers.dev` URL remains available for deployment diagnostics.
 
 ```sh
 npm run deploy:dry-run   # build and validate without uploading

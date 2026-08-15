@@ -2,6 +2,14 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "codewindow",
   "compatibility_date": "2026-08-12",
+  "preview_urls": false,
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "codewindow.app",
+      "custom_domain": true
+    }
+  ],
   // Assets-only: there is no Worker script, so no runtime compatibility flags.
   "assets": {
     "directory": "./dist",
