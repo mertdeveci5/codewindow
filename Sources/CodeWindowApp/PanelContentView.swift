@@ -9,7 +9,7 @@ struct PanelNotice: Equatable, Sendable {
 }
 
 /// An always-on-top Live Activity: every running session remains visible and
-/// each compact row shows its latest safe action, with optional inline detail.
+/// each compact row shows its latest safe action.
 /// No timers, no clocks, no repeating animation. The panel only moves when state moves.
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
@@ -18,10 +18,10 @@ struct PanelContentView: View {
     let checkForUpdates: () -> Void
     let hidePanel: () -> Void
     let activateTerminal: (PresentedSession) -> Bool
+    let hoverSession: (PresentedSession, Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notice: PanelNotice?
-    @State private var expandedSessionID: String?
 
     var body: some View {
         stack
@@ -68,31 +68,19 @@ struct PanelContentView: View {
                         session: session,
                         showsDivider: index > 0,
                         reduceMotion: reduceMotion,
-                        isExpanded: expandedSessionID == session.id,
-                        select: { select(session) }
+                        select: { select(session) },
+                        hoverChanged: { hoverSession(session, $0) }
                     )
                     .transition(rowTransition)
                 }
             }
         }
         .animation(motion, value: store.sessions.map(\.id))
-        .animation(motion, value: expandedSessionID)
         .animation(motion, value: notice)
-        .onChange(of: store.sessions.map(\.id)) { sessionIDs in
-            if let expandedSessionID, !sessionIDs.contains(expandedSessionID) {
-                self.expandedSessionID = nil
-            }
-        }
     }
 
     private func select(_ session: PresentedSession) {
-        guard expandedSessionID == session.id else {
-            expandedSessionID = session.id
-            return
-        }
-        if activateTerminal(session) {
-            expandedSessionID = nil
-        } else {
+        if !activateTerminal(session) {
             show(PanelNotice(message: "terminal is no longer available", succeeded: false))
         }
     }
@@ -152,18 +140,12 @@ private struct SessionRow: View {
     let session: PresentedSession
     let showsDivider: Bool
     let reduceMotion: Bool
-    let isExpanded: Bool
     let select: () -> Void
+    let hoverChanged: (Bool) -> Void
 
     var body: some View {
         Button(action: select) {
-            VStack(spacing: 0) {
-                header
-                if isExpanded {
-                    details
-                        .transition(.opacity)
-                }
-            }
+            header
         }
         .buttonStyle(.plain)
         .background {
@@ -175,7 +157,7 @@ private struct SessionRow: View {
                             .fill(PanelPalette.attention)
                             .frame(
                                 width: PanelMetrics.attentionRailWidth,
-                                height: attentionRailHeight
+                                height: PanelMetrics.attentionRailHeight
                             )
                             .padding(.leading, 2)
                     }
@@ -189,12 +171,9 @@ private struct SessionRow: View {
                     .padding(.trailing, PanelMetrics.rowInsetHorizontal)
             }
         }
+        .onHover(perform: hoverChanged)
         .accessibilityValue(Text(accessibilityValue))
-        .accessibilityHint(
-            isExpanded
-                ? "Activates the terminal for this session"
-                : "Shows more activity for this session"
-        )
+        .accessibilityHint("Activates the terminal for this session")
     }
 
     private var header: some View {
@@ -214,44 +193,8 @@ private struct SessionRow: View {
         .contentShape(Rectangle())
     }
 
-    private var details: some View {
-        VStack(alignment: .leading, spacing: PanelMetrics.detailLineGap) {
-            Text(session.detailTaskLabel)
-                .font(.system(size: PanelMetrics.actionSize, weight: .regular))
-                .foregroundStyle(PanelPalette.title.opacity(0.88))
-                .lineLimit(2)
-
-            HStack(spacing: 5) {
-                Text(session.detailActionLabel)
-                    .lineLimit(1)
-                    .truncationMode(session.prefersLeadingTruncation ? .head : .tail)
-
-                Spacer(minLength: 8)
-
-                Text("open terminal")
-                    .fixedSize()
-                Image(systemName: "arrow.up.forward")
-                    .font(.system(size: 8.5, weight: .regular))
-            }
-            .font(.system(size: PanelMetrics.metaSize, weight: .regular))
-            .foregroundStyle(PanelPalette.meta)
-        }
-        .padding(.leading, PanelMetrics.separatorInset)
-        .padding(.trailing, PanelMetrics.rowInsetHorizontal)
-        .frame(height: PanelMetrics.expandedDetailHeight, alignment: .top)
-        .contentShape(Rectangle())
-    }
-
-    private var attentionRailHeight: CGFloat {
-        PanelMetrics.attentionRailHeight + (isExpanded ? PanelMetrics.expandedDetailHeight : 0)
-    }
-
     private var accessibilityValue: String {
-        guard isExpanded else {
-            return "\(session.accessibilityDescription), collapsed"
-        }
-        return "\(session.accessibilityDescription), task \(session.detailTaskLabel), "
-            + "current action \(session.detailActionLabel), expanded"
+        session.accessibilityDescription
     }
 
     /// Identity is supporting metadata; the changing live action remains dominant.
@@ -327,13 +270,7 @@ private struct StatusMark: View {
     }
 
     private var tint: Color {
-        if session.isDiagnostic { return PanelPalette.attention.opacity(0.55) }
-        switch session.activity {
-        case .needsAttention: return PanelPalette.attention
-        case .working: return PanelPalette.working
-        case .starting: return PanelPalette.starting
-        case .idle, .ended: return PanelPalette.muted
-        }
+        PanelPalette.statusColor(for: session)
     }
 }
 
@@ -369,16 +306,4 @@ private struct PanelHeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
     }
-}
-
-private enum PanelPalette {
-    static let surface = Color(red: 0.025, green: 0.025, blue: 0.029)
-    static let title = Color.white.opacity(0.96)
-    static let meta = Color.white.opacity(0.48)
-    static let diagnostic = Color.white.opacity(0.64)
-    static let attention = Color(nsColor: .systemOrange)
-    static let working = Color(nsColor: .systemGreen)
-    static let starting = Color(nsColor: .systemBlue)
-    static let muted = Color.white.opacity(0.30)
-    static let divider = Color.white.opacity(0.075)
 }

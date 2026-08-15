@@ -357,12 +357,18 @@ public enum HookInstaller {
 
         const reporter = \(encodedPath);
 
+        type ReportDetails = {
+          toolName?: string;
+          toolInput?: unknown;
+          userPrompt?: string;
+          assistantMessage?: string;
+          toolFailed?: boolean;
+        };
+
         function report(
           event: string,
           ctx: ExtensionContext,
-          toolName?: string,
-          toolInput?: unknown,
-          userPrompt?: string,
+          details: ReportDetails = {},
         ): Promise<void> {
           return new Promise((resolve) => {
             const child = spawn(reporter, ["--agent", "pi", "--pid", String(process.pid)], {
@@ -386,19 +392,48 @@ public enum HookInstaller {
               session_id: ctx.sessionManager.getSessionId(),
               event,
               cwd: ctx.cwd,
-              tool_name: toolName,
-              tool_input: toolInput,
-              user_prompt: userPrompt,
+              tool_name: details.toolName,
+              tool_input: details.toolInput,
+              user_prompt: details.userPrompt,
+              last_assistant_message: details.assistantMessage,
+              is_error: details.toolFailed,
             }));
           });
         }
 
+        function visibleAssistantText(message: unknown): string | undefined {
+          if (!message || typeof message !== "object") return undefined;
+          const candidate = message as { role?: unknown; content?: unknown };
+          if (candidate.role !== "assistant" || !Array.isArray(candidate.content)) return undefined;
+
+          const text = candidate.content
+            .filter((part): part is { type: "text"; text: string } => {
+              if (!part || typeof part !== "object") return false;
+              const content = part as { type?: unknown; text?: unknown };
+              return content.type === "text" && typeof content.text === "string";
+            })
+            .map((part) => part.text)
+            .join("\n")
+            .trim();
+          return text || undefined;
+        }
+
         export default function (pi: ExtensionAPI) {
           pi.on("session_start", (_event, ctx) => report("session_start", ctx));
-          pi.on("before_agent_start", (event, ctx) => report("before_agent_start", ctx, undefined, undefined, event.prompt));
-          pi.on("tool_execution_start", (event, ctx) => report("tool_execution_start", ctx, event.toolName, event.args));
-          pi.on("tool_execution_end", (_event, ctx) => report("tool_execution_end", ctx));
-          pi.on("agent_settled", (_event, ctx) => report("agent_settled", ctx));
+          pi.on("before_agent_start", (event, ctx) => report("before_agent_start", ctx, {
+            userPrompt: event.prompt,
+          }));
+          pi.on("tool_execution_start", (event, ctx) => report("tool_execution_start", ctx, {
+            toolName: event.toolName,
+            toolInput: event.args,
+          }));
+          pi.on("tool_execution_end", (event, ctx) => report("tool_execution_end", ctx, {
+            toolName: event.toolName,
+            toolFailed: event.isError,
+          }));
+          pi.on("message_end", (event, ctx) => report("message_end", ctx, {
+            assistantMessage: visibleAssistantText(event.message),
+          }));
           pi.on("session_shutdown", (_event, ctx) => report("session_shutdown", ctx));
         }
         """

@@ -7,11 +7,11 @@ import Foundation
 @MainActor
 final class SessionStore: ObservableObject {
     @Published private(set) var sessions: [PresentedSession] = []
+    @Published private(set) var feeds: [String: [SessionFeedEvent]] = [:]
 
     private let directory: URL
     private var directorySource: DispatchSourceFileSystemObject?
     private var processSources: [String: DispatchSourceProcess] = [:]
-    private var pendingRefresh: DispatchWorkItem?
     private var discoveryTimer: DispatchSourceTimer?
     private let discoveryQueue = DispatchQueue(label: "dev.codewindow.process-discovery", qos: .utility)
     private var isDiscovering = false
@@ -48,7 +48,7 @@ final class SessionStore: ObservableObject {
             if events.contains(.rename) || events.contains(.delete) {
                 self.reopenDirectory()
             } else {
-                self.scheduleRefresh()
+                self.refresh()
             }
         }
         source.setCancelHandler { close(descriptor) }
@@ -65,13 +65,6 @@ final class SessionStore: ObservableObject {
         watchDirectory()
         refresh()
         discoverTerminalAgents()
-    }
-
-    private func scheduleRefresh() {
-        pendingRefresh?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.refresh() }
-        pendingRefresh = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20), execute: work)
     }
 
     private func watchForTerminalAgents() {
@@ -111,12 +104,19 @@ final class SessionStore: ObservableObject {
     private func refresh(discoveredProcesses: [TerminalAgentProcess]? = nil) {
         let wasEmpty = sessions.isEmpty
         var hooked: [SessionState] = []
+        var nextFeeds = feeds
         for entry in StateFiles.all(in: directory) {
             guard entry.state.activity != .ended, ProcessInspector.isCurrent(entry.state.process) else {
                 try? FileManager.default.removeItem(at: entry.url)
                 continue
             }
             hooked.append(entry.state)
+            if let event = entry.state.feedEvent {
+                nextFeeds[entry.state.id] = SessionFeed.appending(
+                    event,
+                    to: nextFeeds[entry.state.id] ?? []
+                )
+            }
         }
 
         let hookedProcesses = Set(hooked.map(\.process))
@@ -131,6 +131,11 @@ final class SessionStore: ObservableObject {
                 return $0.activity.priority < $1.activity.priority
             }
             return $0.updatedAt > $1.updatedAt
+        }
+        let liveSessionIDs = Set(next.map(\.id))
+        nextFeeds = nextFeeds.filter { liveSessionIDs.contains($0.key) }
+        if feeds != nextFeeds {
+            feeds = nextFeeds
         }
         if sessions != next {
             sessions = next

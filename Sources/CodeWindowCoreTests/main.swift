@@ -1,4 +1,5 @@
 @testable import CodeWindowCore
+import CoreGraphics
 import Darwin
 import Foundation
 
@@ -27,6 +28,89 @@ func temporaryDirectory() throws -> URL {
     return url
 }
 
+func testInspectorPlacement() throws {
+    let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
+    let size = CGSize(width: 296, height: 320)
+
+    let rightAnchor = CGRect(x: 1_126, y: 500, width: 296, height: 120)
+    let fromRight = InspectorPlacementPolicy.frame(
+        anchor: rightAnchor,
+        size: size,
+        gap: 8,
+        margin: 18,
+        within: visibleFrame
+    )
+    try require(fromRight.maxX == rightAnchor.minX - 8, "Right-edge panel should open left")
+
+    let leftAnchor = CGRect(x: 18, y: 500, width: 296, height: 120)
+    let fromLeft = InspectorPlacementPolicy.frame(
+        anchor: leftAnchor,
+        size: size,
+        gap: 8,
+        margin: 18,
+        within: visibleFrame
+    )
+    try require(fromLeft.minX == leftAnchor.maxX + 8, "Left-edge panel should open right")
+
+    let narrowFrame = CGRect(x: 0, y: 0, width: 600, height: 900)
+    let topAnchor = CGRect(x: 152, y: 700, width: 296, height: 80)
+    let fromTop = InspectorPlacementPolicy.frame(
+        anchor: topAnchor,
+        size: size,
+        gap: 8,
+        margin: 18,
+        within: narrowFrame
+    )
+    try require(fromTop.maxY == topAnchor.minY - 8, "Top panel without horizontal room should open below")
+
+    let bottomAnchor = CGRect(x: 152, y: 18, width: 296, height: 80)
+    let fromBottom = InspectorPlacementPolicy.frame(
+        anchor: bottomAnchor,
+        size: size,
+        gap: 8,
+        margin: 18,
+        within: narrowFrame
+    )
+    try require(fromBottom.minY == bottomAnchor.maxY + 8, "Bottom panel without horizontal room should open above")
+
+    let negativeScreen = CGRect(x: -1_280, y: -120, width: 1_280, height: 800)
+    let safeFrame = negativeScreen.insetBy(dx: 18, dy: 18)
+    for x in stride(from: safeFrame.minX, through: safeFrame.maxX - 296, by: 100) {
+        for y in stride(from: safeFrame.minY, through: safeFrame.maxY - 80, by: 100) {
+            let placement = InspectorPlacementPolicy.frame(
+                anchor: CGRect(x: x, y: y, width: 296, height: 80),
+                size: size,
+                gap: 8,
+                margin: 18,
+                within: negativeScreen
+            )
+            try require(safeFrame.contains(placement), "Inspector escaped the selected screen")
+        }
+    }
+}
+
+func testSessionFeed() throws {
+    let first = SessionFeedEvent(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        kind: .toolCall,
+        text: "reading file",
+        detail: "PanelContentView.swift"
+    )
+    let once = SessionFeed.appending(first, to: [])
+    try require(once == [first], "First feed event was not recorded")
+    try require(SessionFeed.appending(first, to: once) == once, "Duplicate feed event was recorded")
+
+    var events: [SessionFeedEvent] = []
+    for index in 0...SessionFeed.maximumEvents {
+        events = SessionFeed.appending(
+            SessionFeedEvent(kind: .toolResult, text: "tool \(index)", succeeded: true),
+            to: events
+        )
+    }
+    try require(events.count == SessionFeed.maximumEvents, "Feed did not enforce its event limit")
+    try require(events.first?.text == "tool 1", "Feed did not evict its oldest event")
+}
+
 func testHookPayloads() throws {
     let process = ProcessStamp(pid: 42, startedAtSeconds: 100, startedAtMicroseconds: 5)
     let cases: [(String, String?, Activity, SafeAction)] = [
@@ -40,6 +124,7 @@ func testHookPayloads() throws {
         ("SessionEnd", nil, .ended, .waiting),
         ("tool_execution_start", "read", .working, .readingFile),
         ("tool_execution_end", "read", .working, .thinking),
+        ("message_end", nil, .idle, .waiting),
     ]
 
     for (event, tool, activity, action) in cases {
@@ -81,6 +166,8 @@ func testHookPayloads() throws {
         "Task preview state missing"
     )
     try require(taskState.taskPreview == "Please verify the compact agent preview without exposing private output", "Task preview mismatch")
+    try require(taskState.feedEvent?.kind == .user, "User prompt was not added to the feed")
+    try require(taskState.feedEvent?.text == taskState.taskPreview, "User feed text mismatch")
 
     let commandState = try unwrap(
         HookPayload(json: [
@@ -94,8 +181,61 @@ func testHookPayloads() throws {
     )
     try require(commandState.taskPreview == taskState.taskPreview, "Task preview was not carried forward")
     try require(commandState.actionPreview == "OPENAI_API_KEY=•••• swift test --filter PreviewTests", "Command preview was not sanitized")
+    try require(commandState.feedEvent?.kind == .toolCall, "Tool call was not added to the feed")
+    try require(commandState.feedEvent?.detail == commandState.actionPreview, "Tool feed detail mismatch")
     let commandText = try unwrap(String(data: JSONEncoder().encode(commandState), encoding: .utf8), "Command state is not UTF-8")
     try require(!commandText.contains("sk-example-secret-value"), "Credential leaked into command preview")
+
+    let completedState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PostToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "Bash",
+        ]).state(agent: .claude, process: process),
+        "Tool result state missing"
+    )
+    try require(completedState.feedEvent?.kind == .toolResult, "Tool result was not added to the feed")
+    try require(completedState.feedEvent?.succeeded == true, "Successful tool result was marked failed")
+
+    let failedState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "event": "tool_execution_end",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "read",
+            "is_error": true,
+        ]).state(agent: .pi, process: process),
+        "Failed tool result state missing"
+    )
+    try require(failedState.activity == .needsAttention, "Failed Pi tool did not request attention")
+    try require(failedState.feedEvent?.succeeded == false, "Failed tool result was marked successful")
+
+    let assistantState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "Stop",
+            "cwd": "/tmp/codewindow",
+            "last_assistant_message": "Implemented the change using TOKEN=private-value and verified the tests.",
+        ]).state(agent: .claude, process: process),
+        "Assistant message state missing"
+    )
+    try require(assistantState.feedEvent?.kind == .assistant, "Assistant reply was not added to the feed")
+    try require(
+        assistantState.feedEvent?.text == "Implemented the change using TOKEN=•••• and verified the tests.",
+        "Assistant reply was not sanitized"
+    )
+
+    let longAssistantState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "Stop",
+            "cwd": "/tmp/codewindow",
+            "last_assistant_message": String(repeating: "a", count: 1_000),
+        ]).state(agent: .codex, process: process),
+        "Long assistant message state missing"
+    )
+    try require(longAssistantState.feedEvent?.text.count == 320, "Assistant message was not bounded")
 
     let readState = try unwrap(
         HookPayload(json: [
@@ -243,6 +383,44 @@ func testStateFiles() throws {
     try require(fileMode.intValue & 0o777 == 0o600, "State file is not 0600")
     let stateByteCount = try Data(contentsOf: file).count
     try require(stateByteCount < 1_024, "State exceeds 1KB")
+
+    let boundedFeedState = try unwrap(
+        HookPayload(json: [
+            "session_id": "bounded-feed",
+            "hook_event_name": "Stop",
+            "cwd": "/tmp/codewindow",
+            "last_assistant_message": String(repeating: "a", count: 1_000),
+        ]).state(
+            agent: .codex,
+            process: process,
+            previousTaskPreview: String(repeating: "t", count: 96)
+        ),
+        "Bounded feed state missing"
+    )
+    try StateFiles.write(boundedFeedState, to: directory)
+    let boundedFeedFile = directory.appendingPathComponent("\(boundedFeedState.sessionKey).json")
+    let boundedFeedByteCount = try Data(contentsOf: boundedFeedFile).count
+    try require(
+        boundedFeedByteCount <= StateFiles.maximumStateBytes,
+        "Largest feed state exceeds the file limit"
+    )
+
+    let emojiTaskState = try unwrap(
+        HookPayload(json: [
+            "session_id": "emoji-feed",
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": "/tmp/codewindow",
+            "user_prompt": String(repeating: "🤖", count: 1_000),
+        ]).state(agent: .codex, process: process),
+        "Emoji feed state missing"
+    )
+    try StateFiles.write(emojiTaskState, to: directory)
+    let emojiFeedFile = directory.appendingPathComponent("\(emojiTaskState.sessionKey).json")
+    let emojiFeedByteCount = try Data(contentsOf: emojiFeedFile).count
+    try require(
+        emojiFeedByteCount <= StateFiles.maximumStateBytes,
+        "Multi-byte feed state exceeds the file limit"
+    )
     try require(ProcessInspector.isCurrent(process), "Current process identity rejected")
     let impossible = ProcessStamp(pid: process.pid, startedAtSeconds: 0, startedAtMicroseconds: 0)
     try require(!ProcessInspector.isCurrent(impossible), "PID reuse guard accepted wrong start time")
@@ -378,6 +556,10 @@ func testHookInstaller() throws {
     try require(piExtension.contains("before_agent_start"), "Pi task preview hook missing")
     try require(piExtension.contains("event.args"), "Pi tool arguments are not forwarded for sanitization")
     try require(piExtension.contains("tool_execution_end"), "Pi tool completion hook missing")
+    try require(piExtension.contains("event.isError"), "Pi tool failures are not forwarded")
+    try require(piExtension.contains("message_end"), "Pi assistant message hook missing")
+    try require(piExtension.contains("last_assistant_message"), "Pi assistant text is not forwarded")
+    try require(piExtension.contains(#"content.type === "text""#), "Pi visible text is not isolated from reasoning")
     try require(!piExtension.contains("pi.on(\"tool_call\""), "Legacy Pi tool hook remains")
 
     let second = try HookInstaller.install(at: locations)
@@ -539,6 +721,8 @@ func readJSON(_ url: URL) throws -> [String: Any] {
 }
 
 let tests: [(String, () throws -> Void)] = [
+    ("inspector placement", testInspectorPlacement),
+    ("session feed", testSessionFeed),
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),
     ("terminal agent discovery", testTerminalAgentDiscovery),

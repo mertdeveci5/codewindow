@@ -84,6 +84,8 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
     public let taskPreview: String?
     /// A short, sanitized subject for the tool that is currently running.
     public let actionPreview: String?
+    /// The latest sanitized event, retained in memory by the app while it runs.
+    public let feedEvent: SessionFeedEvent?
     public let process: ProcessStamp
     public let updatedAt: Date
 
@@ -97,6 +99,7 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
         action: SafeAction,
         taskPreview: String? = nil,
         actionPreview: String? = nil,
+        feedEvent: SessionFeedEvent? = nil,
         process: ProcessStamp,
         updatedAt: Date = Date()
     ) {
@@ -108,6 +111,7 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
         self.action = action
         self.taskPreview = taskPreview
         self.actionPreview = actionPreview
+        self.feedEvent = feedEvent
         self.process = process
         self.updatedAt = updatedAt
     }

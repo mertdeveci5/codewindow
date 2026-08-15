@@ -11,6 +11,8 @@ public struct HookPayload: Sendable {
     private let pathText: String?
     private let queryText: String?
     private let toolSubjectText: String?
+    private let assistantText: String?
+    private let toolFailed: Bool
 
     public init(json: [String: Any]) throws {
         guard let sessionID = Self.string(in: json, keys: ["session_id", "sessionId"]),
@@ -28,6 +30,11 @@ public struct HookPayload: Sendable {
         self.toolName = toolName
         self.notificationType = Self.string(in: json, keys: ["notification_type", "notificationType"])
         self.submittedText = Self.string(in: json, keys: ["user_prompt", "userPrompt", "prompt"])
+        self.assistantText = Self.string(
+            in: json,
+            keys: ["last_assistant_message", "lastAssistantMessage", "assistant_message", "assistantMessage"]
+        )
+        self.toolFailed = Self.boolean(in: json, keys: ["is_error", "isError"]) ?? false
 
         let toolInputValue = Self.value(in: json, keys: ["tool_input", "toolInput", "args", "input"])
         let toolInput = toolInputValue as? [String: Any] ?? [:]
@@ -54,6 +61,7 @@ public struct HookPayload: Sendable {
         now: Date = Date()
     ) -> SessionState? {
         guard let presentation = presentation else { return nil }
+        let actionPreview = actionPreview(for: presentation.action)
         return SessionState(
             sessionKey: SessionState.key(agent: agent, externalSessionID: externalSessionID),
             agent: agent,
@@ -61,7 +69,11 @@ public struct HookPayload: Sendable {
             projectLabel: SessionState.projectLabel(cwd: cwd),
             action: presentation.action,
             taskPreview: taskPreview ?? previousTaskPreview,
-            actionPreview: actionPreview(for: presentation.action),
+            actionPreview: actionPreview,
+            feedEvent: feedEvent(
+                action: presentation.action,
+                actionPreview: actionPreview
+            ),
             process: process,
             updatedAt: now
         )
@@ -76,17 +88,55 @@ public struct HookPayload: Sendable {
         case "pretooluse", "toolcall", "toolexecutionstart":
             return (.working, Self.safeAction(for: toolName, hasQuery: queryText != nil))
         case "posttooluse", "toolresult", "toolexecutionend":
-            return (.working, .thinking)
+            return toolFailed ? (.needsAttention, .failed) : (.working, .thinking)
         case "permissionrequest":
             return (.needsAttention, .awaitingPermission)
         case "notification" where Self.normalized(notificationType ?? "").contains("permission"):
             return (.needsAttention, .awaitingPermission)
         case "posttoolusefailure":
             return (.needsAttention, .failed)
-        case "stop", "agentsettled":
+        case "messageend", "stop", "agentsettled":
             return (.idle, .waiting)
         case "sessionend", "sessionshutdown":
             return (.ended, .waiting)
+        default:
+            return nil
+        }
+    }
+
+    private func feedEvent(
+        action: SafeAction,
+        actionPreview: String?
+    ) -> SessionFeedEvent? {
+        switch Self.normalized(eventName) {
+        case "userpromptsubmit", "beforeagentstart":
+            guard let text = Self.messagePreview(submittedText) else { return nil }
+            return SessionFeedEvent(kind: .user, text: text)
+        case "pretooluse", "toolcall", "toolexecutionstart":
+            return SessionFeedEvent(
+                kind: .toolCall,
+                text: action.label,
+                detail: actionPreview
+            )
+        case "posttooluse", "toolresult", "toolexecutionend":
+            return SessionFeedEvent(
+                kind: .toolResult,
+                text: Self.toolLabel(toolName) ?? "tool",
+                succeeded: !toolFailed
+            )
+        case "posttoolusefailure":
+            return SessionFeedEvent(
+                kind: .toolResult,
+                text: Self.toolLabel(toolName) ?? "tool",
+                succeeded: false
+            )
+        case "permissionrequest":
+            return SessionFeedEvent(kind: .attention, text: action.label)
+        case "notification" where Self.normalized(notificationType ?? "").contains("permission"):
+            return SessionFeedEvent(kind: .attention, text: action.label)
+        case "messageend", "stop", "agentsettled":
+            guard let text = Self.messagePreview(assistantText) else { return nil }
+            return SessionFeedEvent(kind: .assistant, text: text)
         default:
             return nil
         }
@@ -154,6 +204,13 @@ public struct HookPayload: Sendable {
     private static func value(in json: [String: Any], keys: [String]) -> Any? {
         for key in keys {
             if let value = json[key] { return value }
+        }
+        return nil
+    }
+
+    private static func boolean(in json: [String: Any], keys: [String]) -> Bool? {
+        for key in keys {
+            if let value = json[key] as? Bool { return value }
         }
         return nil
     }
@@ -282,6 +339,18 @@ public struct HookPayload: Sendable {
 
     /// Keeps state files small and removes common credential shapes before persistence.
     private static func preview(_ rawValue: String?) -> String? {
+        sanitized(rawValue, maximumCharacters: 96, maximumUTF8Bytes: 192)
+    }
+
+    private static func messagePreview(_ rawValue: String?) -> String? {
+        sanitized(rawValue, maximumCharacters: 320, maximumUTF8Bytes: 384)
+    }
+
+    private static func sanitized(
+        _ rawValue: String?,
+        maximumCharacters: Int,
+        maximumUTF8Bytes: Int
+    ) -> String? {
         guard let rawValue else { return nil }
         var value = rawValue.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !value.isEmpty else { return nil }
@@ -300,9 +369,16 @@ public struct HookPayload: Sendable {
             )
         }
 
-        let maximumCharacters = 96
-        guard value.count > maximumCharacters else { return value }
-        return String(value.prefix(maximumCharacters - 1)) + "…"
+        guard value.count > maximumCharacters || value.utf8.count > maximumUTF8Bytes else {
+            return value
+        }
+
+        value = String(value.prefix(maximumCharacters - 1))
+        let maximumContentBytes = maximumUTF8Bytes - "…".utf8.count
+        while value.utf8.count > maximumContentBytes {
+            value.removeLast()
+        }
+        return value + "…"
     }
 }
 

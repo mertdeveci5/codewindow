@@ -1,5 +1,20 @@
 import AppKit
 
+extension NSPanel {
+    func configureForCodeWindow() {
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = true
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        animationBehavior = .none
+        appearance = NSAppearance(named: .darkAqua)
+    }
+}
+
 /// A borderless, non-activating panel that floats above every Space and over
 /// full-screen apps. The panel itself never takes key or main status. A session
 /// row can still explicitly return focus to the terminal that owns that session.
@@ -127,6 +142,6 @@ final class FloatingPanel: NSPanel {
     }
 }
 
-private extension NSRect {
+extension NSRect {
     var area: CGFloat { isNull ? 0 : width * height }
 }

@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel?
+    private var inspector: InspectorController?
     private var store: SessionStore?
     private var sessionsCancellable: AnyCancellable?
     private var isManuallyHidden = false
@@ -32,12 +33,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
 
+            if let smokeDirectory,
+               let process = ProcessInspector.stamp(pid: getpid())
+            {
+                try StateFiles.write(
+                    SessionState(
+                        sessionKey: "smoke-session",
+                        agent: .codex,
+                        activity: .idle,
+                        projectLabel: "codewindow",
+                        action: .waiting,
+                        feedEvent: SessionFeedEvent(
+                            kind: .assistant,
+                            text: "Inspector smoke fixture"
+                        ),
+                        process: process
+                    ),
+                    to: smokeDirectory
+                )
+            }
+
             let store = try SessionStore(directory: smokeDirectory)
             self.store = store
             let panel = makePanel(store: store)
             self.panel = panel
 
             if isSmokeTest {
+                panel.orderFrontRegardless()
+                if let session = store.sessions.first(where: { $0.id == "smoke-session" }) {
+                    inspector?.rowHoverChanged(session, isHovered: true)
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                }
+                let inspectorPanel = panel.childWindows?.first
+                let inspectorWorks = inspectorPanel?.isVisible == true
+                    && inspectorPanel?.frame.width == PanelMetrics.width
+                    && abs((inspectorPanel?.frame.maxX ?? 0) - panel.frame.minX + PanelMetrics.inspectorGap) < 0.5
+                    && store.feeds["smoke-session"]?.count == 1
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
@@ -77,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && trackpadMoveWorks
                     && validPositionWasPreserved
                     && offscreenPositionWasConstrained
+                    && inspectorWorks
                 print(
                     "floating=\(panel.level == .floating) "
                         + "allSpaces=\(behavior.contains(.canJoinAllSpaces)) "
@@ -87,15 +119,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
                         + "trackpad=\(trackpadMoveWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
+                        + "inspector=\(inspectorWorks) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
                 )
+                inspector?.dismissImmediately()
+                panel.orderOut(nil)
                 if let smokeDirectory {
                     try? FileManager.default.removeItem(at: smokeDirectory)
                 }
                 exit(passed ? EXIT_SUCCESS : EXIT_FAILURE)
             }
 
-            sessionsCancellable = store.$sessions.sink { [weak self] _ in
+            sessionsCancellable = store.$sessions.sink { [weak self] sessions in
+                self?.inspector?.reconcile(with: sessions)
                 self?.updatePanelVisibility()
             }
             NSWorkspace.shared.notificationCenter.addObserver(
@@ -133,20 +169,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = true
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.configureForCodeWindow()
         panel.isMovableByWindowBackground = true
-        panel.animationBehavior = .none
         panel.title = "CodeWindow"
-        // The panel is a dark opaque capsule in every system appearance, so pin the
-        // appearance rather than letting label colors flip to dark-on-dark in Light Mode.
-        panel.appearance = NSAppearance(named: .darkAqua)
+        let inspector = InspectorController(parentPanel: panel, store: store)
+        self.inspector = inspector
 
         let content = PanelContentView(
             store: store,
@@ -168,6 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             activateTerminal: { [weak self] session in
                 self?.activateTerminal(for: session) ?? false
+            },
+            hoverSession: { [weak inspector] session, isHovered in
+                inspector?.rowHoverChanged(session, isHovered: isHovered)
             }
         )
         panel.contentView = NSHostingView(rootView: content)
@@ -202,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func screenParametersDidChange() {
         guard let panel else { return }
         panel.constrainToVisibleArea()
+        inspector?.relayout()
     }
 
     @objc private func frontmostApplicationDidChange() {
@@ -210,14 +241,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func hidePanelManually() {
         isManuallyHidden = true
+        inspector?.dismissImmediately()
         panel?.orderOut(nil)
     }
 
     private func updatePanelVisibility() {
         guard let panel, let store else { return }
         let shouldHide = isManuallyHidden || frontmostApplicationOwnsSession(store.sessions)
-        if shouldHide, panel.isVisible {
-            panel.orderOut(nil)
+        if shouldHide {
+            inspector?.dismissImmediately()
+            if panel.isVisible {
+                panel.orderOut(nil)
+            }
         } else if !shouldHide, !panel.isVisible {
             panel.orderFrontRegardless()
         }
