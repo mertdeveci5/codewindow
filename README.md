@@ -19,7 +19,7 @@ The release archive includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.6-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.7-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the ZIP file.
 3. Move `CodeWindow.app` to the Applications folder.
 4. Open CodeWindow.
