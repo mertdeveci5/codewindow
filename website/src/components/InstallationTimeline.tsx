@@ -12,7 +12,7 @@ import {
 const INSTALLATION_STEPS = [
   {
     title: "Download CodeWindow",
-    description: "Click Download for macOS, then open the ZIP when it finishes downloading.",
+    description: "Click Download for macOS, then open the disk image when it finishes downloading.",
   },
   {
     title: "Move it to Applications",
@@ -23,9 +23,9 @@ const INSTALLATION_STEPS = [
     description: "Open CodeWindow from Applications. macOS verifies the signed app before launch.",
   },
   {
-    title: "Install the agent hooks",
+    title: "Connect your agents",
     description:
-      "Right-click the floating CodeWindow panel and choose Install or update agent hooks.",
+      "Choose Install when CodeWindow offers to connect your agents. You can also do this later from the panel's right-click menu.",
   },
   {
     title: "Restart your agent sessions",

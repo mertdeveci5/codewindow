@@ -15,21 +15,21 @@ CodeWindow uses SwiftUI and AppKit. Session state is stored in small files on di
 - macOS 13 or later
 - Codex CLI, Claude Code, or Pi
 
-The release archive includes code for Apple silicon and Intel Macs.
+The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.7-macOS-universal.zip` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
-2. Open the ZIP file.
-3. Move `CodeWindow.app` to the Applications folder.
+1. Download `CodeWindow-v0.1.8-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+2. Open the disk image.
+3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
-5. Right-click the CodeWindow panel and choose Install or update agent hooks.
+5. Choose Install when CodeWindow offers to connect your agents. You can also right-click the panel and choose Install or update agent hooks.
 
 Public releases are signed with a Developer ID Application certificate and notarized by Apple. The release workflow also staples the notarization ticket to the app and checks it with Gatekeeper before publishing.
 
 ## Connect terminal agents
 
-The panel can install the hooks for you. Right-click it and choose Install or update agent hooks.
+The panel offers to install the hooks on first launch. If you choose Not now, right-click it later and choose Install or update agent hooks.
 
 You can also install them from Terminal:
 
@@ -120,7 +120,7 @@ Maintainers can also create the signed Sparkle feed using the private key stored
 SPARKLE_KEY_ACCOUNT=dev.codewindow.app ./Scripts/package-release.sh
 ```
 
-Pushing a matching version tag runs the release workflow. It tests the app, imports the Developer ID certificate into a temporary keychain, builds a universal archive with hardened runtime and secure timestamps, submits it to Apple, staples the accepted ticket, checks the app with Gatekeeper, signs `appcast.xml`, and publishes the files to GitHub Releases. The workflow stops before publishing if any check fails.
+Pushing a matching version tag runs the release workflow. It tests the app, imports the Developer ID certificate into a temporary keychain, builds a universal app with hardened runtime and secure timestamps, notarizes and staples it, creates a signed update ZIP and a drag-to-Applications disk image, notarizes the disk image, checks the mounted app with Gatekeeper, signs `appcast.xml`, and publishes the files to GitHub Releases. The workflow stops before publishing if any check fails.
 
 Add these GitHub Actions secrets before creating a release tag:
 
@@ -148,7 +148,7 @@ Local builds remain ad hoc signed by default. A local Developer ID build can set
 ./build/CodeWindow.app/Contents/MacOS/CodeWindow --smoke-test
 ```
 
-The smoke test checks the floating window behavior, all-Spaces support, full-screen support, bundled icons, trackpad movement, and panel width. It also reports the session count at launch.
+The smoke test checks the floating window behavior, all-Spaces support, full-screen support, bundled icons, trackpad movement, inspector transitions, and panel width. It also reports the session count at launch.
 
 ## Logo sources
 
