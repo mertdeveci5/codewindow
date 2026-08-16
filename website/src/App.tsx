@@ -60,20 +60,6 @@ export function App(): React.ReactElement {
               </DownloadButton>
             </div>
             <InstallationTimeline />
-            <p className="install-note">
-              The download is a Developer ID signed and notarized universal app. Privacy details
-              and uninstall steps are in the{" "}
-              <a
-                className="text-link"
-                href={REPO_URL}
-                onClick={() => captureExternalLinkClicked("github_repository", "install")}
-                rel="noreferrer noopener"
-                target="_blank"
-              >
-                README
-              </a>
-              .
-            </p>
           </section>
         </main>
 

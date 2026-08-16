@@ -522,20 +522,6 @@
       flex-direction: column;
       gap: 1.25rem;
     }
-
-    .install-note .text-link {
-      display: inline-flex;
-      min-height: 2.75rem;
-      align-items: center;
-      vertical-align: middle;
-    }
-  }
-
-  .install-note {
-    margin-top: 0.625rem;
-    font-size: 0.75rem;
-    line-height: 1.2rem;
-    color: rgb(255 255 255 / 0.5);
   }
 
   .text-link {
@@ -629,13 +615,9 @@
   /* ---------------------------------------------------------- demo frame */
 
   .demo-figure {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
     margin: 0;
   }
 
-  /* A player-like enclosure: artboard above, transport below. */
   .demo-frame {
     overflow: hidden;
     border: 1px solid rgb(255 255 255 / 0.09);
@@ -647,103 +629,17 @@
   }
 
   .demo-viewport {
-    padding: 0.625rem;
-  }
-
-  .demo-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 0.625rem;
-    border-top: 1px solid rgb(255 255 255 / 0.06);
-    background: rgb(255 255 255 / 0.015);
-  }
-
-  .demo-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .demo-icon-button {
-    display: flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.5rem;
-    color: rgb(255 255 255 / 0.7);
-    background: rgb(255 255 255 / 0.06);
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .demo-icon-button:hover {
-    color: rgb(255 255 255 / 0.95);
-    background: rgb(255 255 255 / 0.12);
-  }
-
-  .demo-segmented {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 0.5rem;
-    background: rgb(255 255 255 / 0.05);
-  }
-
-  .demo-segment {
-    border-radius: 0.375rem;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
-    line-height: 1rem;
-    white-space: nowrap;
-    color: rgb(255 255 255 / 0.55);
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .demo-segment:hover {
-    color: rgb(255 255 255 / 0.85);
-  }
-
-  .demo-segment[aria-pressed="true"] {
-    background: rgb(255 255 255 / 0.12);
-    color: rgb(255 255 255 / 0.95);
-  }
-
-  .demo-expand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    border-radius: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
-    line-height: 1rem;
-    color: rgb(255 255 255 / 0.62);
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .demo-expand:hover {
-    background: rgb(255 255 255 / 0.08);
-    color: rgb(255 255 255 / 0.95);
-  }
-
-  .demo-caption {
-    font-size: 0.6875rem;
-    line-height: 1.1rem;
-    color: rgb(255 255 255 / 0.5);
+    padding: 7px;
   }
 
   /* --------------------------------------------------------- panel demo */
 
-  /* Where the panel floats over the mock desktop. */
+  /* Match the shipping 18 pt screen margin. */
   .panel-float {
     position: absolute;
-    top: 58px;
-    right: 24px;
+    z-index: 3;
+    top: 18px;
+    right: 18px;
     pointer-events: none;
   }
 
@@ -757,14 +653,6 @@
       0 0 0 1px rgb(255 255 255 / 0.13),
       0 22px 48px -13px rgb(0 0 0 / 0.88),
       0 5px 14px rgb(0 0 0 / 0.58);
-    transition:
-      opacity 0.24s ease,
-      transform 0.24s ease;
-  }
-
-  .cw-panel[data-hidden="true"] {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.985);
   }
 
   .cw-row {
@@ -779,6 +667,10 @@
   .cw-row[data-attention="true"] {
     border-radius: 13px;
     background: rgb(255 159 10 / 0.16);
+  }
+
+  .cw-row[data-attention="true"] .cw-primary {
+    color: var(--cw-attention);
   }
 
   .cw-divider {
@@ -807,17 +699,46 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
-    overflow: hidden;
   }
 
   .cw-primary {
+    position: relative;
     font-size: 12.5px;
     line-height: 1.15;
     color: var(--cw-title);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .cw-primary-animated,
+  .terminal-cycle-line {
+    height: 14.375px;
+  }
+
+  .cw-frame-a,
+  .cw-frame-b {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    animation-duration: 8s;
+    animation-iteration-count: infinite;
+    animation-timing-function: ease;
+  }
+
+  .cw-frame-b {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+  }
+
+  .cw-frame-a {
+    animation-name: demo-frame-a;
+  }
+
+  .cw-frame-b {
+    animation-name: demo-frame-b;
   }
 
   .cw-meta {
@@ -831,147 +752,262 @@
     overflow: hidden;
   }
 
-  .panel-stage {
-    position: relative;
-    height: var(--stage-height, 270px);
-    overflow: hidden;
-    border-radius: 12px;
-    border: 1px solid rgb(255 255 255 / 0.07);
-    background:
-      radial-gradient(24rem 15rem at 92% 10%, rgb(125 140 255 / 0.1), transparent 70%),
-      linear-gradient(145deg, oklch(0.18 0.008 264.542), oklch(0.135 0.004 264.542));
-    box-shadow: 0 24px 60px -32px rgb(0 0 0 / 0.9);
+  .scene-scale {
+    --scene-scale: 1;
+    width: 640px;
+    height: 410px;
+    margin-left: calc(50% - 320px);
+    transform: scale(var(--scene-scale));
+    transform-origin: top center;
   }
 
-  .panel-stage::after {
+  .macbook-stage {
+    position: relative;
+    width: 640px;
+    height: 410px;
+  }
+
+  .macbook-lid {
+    position: absolute;
+    top: 0;
+    left: 10px;
+    width: 620px;
+    height: 388px;
+    border: 1px solid rgb(255 255 255 / 0.16);
+    border-radius: 14px 14px 8px 8px;
+    background: linear-gradient(145deg, #62656b, #26282d 42%, #111216);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.23),
+      0 30px 54px -28px rgb(0 0 0 / 0.95);
+  }
+
+  .macbook-camera {
+    position: absolute;
+    z-index: 5;
+    top: 2px;
+    left: calc(50% - 2px);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgb(1 3 5 / 0.92);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04);
+  }
+
+  .macbook-screen {
+    position: absolute;
+    inset: 8px;
+    overflow: hidden;
+    border-radius: 7px;
+    background: #09090b;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.035);
+  }
+
+  .macbook-base {
+    position: absolute;
+    top: 386px;
+    left: 0;
+    width: 640px;
+    height: 20px;
+    border-radius: 2px 2px 13px 13px;
+    background: linear-gradient(180deg, #8b8d92, #4a4c51 44%, #202126 78%, #121317);
+    clip-path: polygon(2.2% 0, 97.8% 0, 100% 38%, 97% 78%, 3% 78%, 0 38%);
+    box-shadow: 0 18px 28px -17px rgb(0 0 0 / 0.88);
+  }
+
+  .macbook-lip {
+    position: absolute;
+    top: 0;
+    left: calc(50% - 40px);
+    width: 80px;
+    height: 4px;
+    border-radius: 0 0 8px 8px;
+    background: rgb(18 19 22 / 0.58);
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.16);
+  }
+
+  .terminal-window {
     position: absolute;
     inset: 0;
-    background-image: linear-gradient(rgb(255 255 255 / 0.015) 1px, transparent 1px);
-    background-size: 100% 24px;
-    content: "";
-    pointer-events: none;
-  }
-
-  .panel-stage-window {
-    position: absolute;
-    inset: 30px 104px 32px 28px;
     overflow: hidden;
-    border: 1px solid rgb(255 255 255 / 0.06);
-    border-radius: 10px;
-    background: rgb(7 7 9 / 0.5);
-    box-shadow: 0 16px 35px rgb(0 0 0 / 0.22);
-    transition: border-color 0.24s ease, box-shadow 0.24s ease;
+    background:
+      radial-gradient(28rem 18rem at 24% 18%, rgb(57 68 104 / 0.14), transparent 70%),
+      #09090b;
   }
 
-  .panel-stage-window-bar {
+  .terminal-titlebar {
+    position: relative;
     display: flex;
     height: 28px;
     align-items: center;
-    gap: 12px;
-    padding-inline: 10px;
-    border-bottom: 1px solid rgb(255 255 255 / 0.05);
-    background: rgb(255 255 255 / 0.018);
+    justify-content: center;
+    border-bottom: 1px solid rgb(255 255 255 / 0.055);
+    background: rgb(255 255 255 / 0.028);
   }
 
-  .panel-stage-window-body {
+  .terminal-lights {
+    position: absolute;
+    left: 12px;
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 20px 16px;
+    gap: 6px;
   }
 
-  .panel-stage[data-focused="true"] .panel-stage-window {
-    border-color: color-mix(in oklab, var(--primary) 42%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent);
+  .terminal-light {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.22);
   }
 
-  /*
-   * The scene is an artboard: the panel inside it has to stay 296px so the
-   * "296 pt" claim holds, so on narrow screens the whole artboard is widened
-   * and scaled back down by the same factor. A transform does not shrink the
-   * layout box, so the slack height is taken back with a margin. The stage is
-   * border-box, so --scene-height is exactly its height.
-   */
-  .scene-scale {
-    --scene-height: var(--stage-height, 270px);
-    --scene-scale: 1;
-    width: calc(100% / var(--scene-scale));
-    transform: scale(var(--scene-scale));
-    transform-origin: top left;
-    margin-bottom: calc(var(--scene-height) * (var(--scene-scale) - 1));
+  .terminal-light-close {
+    background: #ff5f57;
   }
 
-  /* Each step below keeps the 296px panel clear of the artboard's left edge. */
+  .terminal-light-minimize {
+    background: #febc2e;
+  }
+
+  .terminal-light-zoom {
+    background: #28c840;
+  }
+
+  .terminal-title {
+    color: rgb(255 255 255 / 0.44);
+    font-size: 9px;
+    font-weight: 500;
+  }
+
+  .terminal-body {
+    padding: 18px 16px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.55;
+    color: rgb(255 255 255 / 0.82);
+  }
+
+  .terminal-body p {
+    margin: 0;
+  }
+
+  .terminal-path {
+    color: #67e8f9;
+  }
+
+  .terminal-branch {
+    color: #f472b6;
+  }
+
+  .terminal-prompt {
+    color: #a5b4fc;
+  }
+
+  .terminal-muted {
+    color: rgb(255 255 255 / 0.43);
+  }
+
+  .terminal-cycle-line {
+    position: relative;
+    width: 270px;
+    color: rgb(255 255 255 / 0.58);
+  }
+
+  .terminal-cursor-line {
+    padding-top: 3px;
+  }
+
+  .terminal-cursor {
+    display: block;
+    width: 6px;
+    height: 12px;
+    background: rgb(255 255 255 / 0.72);
+  }
+
+  @keyframes demo-frame-a {
+    0%, 20%, 100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    24%, 84% {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    90% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes demo-frame-b {
+    0%, 20%, 88%, 100% {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    26%, 82% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cw-frame-a,
+    .cw-frame-b {
+      animation: none;
+    }
+
+    .cw-frame-b {
+      display: none;
+    }
+  }
+
+  @media (max-width: 688px) {
+    .scene-scale {
+      --scene-scale: 0.94;
+      margin-bottom: -24.6px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .scene-scale {
+      --scene-scale: 0.82;
+      margin-bottom: -73.8px;
+    }
+  }
+
   @media (max-width: 520px) {
     .scene-scale {
-      --scene-scale: 0.92;
+      --scene-scale: 0.7;
+      margin-bottom: -123px;
     }
   }
 
-  @media (max-width: 420px) {
+  @media (max-width: 460px) {
     .scene-scale {
-      --scene-scale: 0.84;
-    }
-  }
-
-  @media (max-width: 360px) {
-    .scene-scale {
-      --scene-scale: 0.76;
-    }
-  }
-
-  @media (max-width: 520px) {
-    .panel-float {
-      right: 16px;
-    }
-
-    .panel-stage-window {
-      inset-inline-start: 18px;
-      inset-inline-end: 84px;
+      --scene-scale: 0.61;
+      margin-bottom: -159.9px;
     }
   }
 
   @media (max-width: 420px) {
     .demo-viewport {
-      padding: 0.375rem;
+      padding: 6px;
     }
 
-    .demo-bar {
-      align-items: stretch;
-      flex-direction: column;
-      padding: 0.5rem;
+    .scene-scale {
+      --scene-scale: 0.53;
+      margin-bottom: -192.7px;
     }
+  }
 
-    .demo-controls {
-      display: grid;
-      width: 100%;
-      grid-template-columns: 2.75rem minmax(0, 1fr);
-      gap: 0.5rem;
+  @media (max-width: 370px) {
+    .scene-scale {
+      --scene-scale: 0.49;
+      margin-bottom: -209.1px;
     }
+  }
 
-    .demo-icon-button {
-      width: 2.75rem;
-      height: 2.75rem;
-    }
-
-    .demo-segmented {
-      min-width: 0;
-    }
-
-    .demo-segment {
-      min-width: 0;
-      min-height: 2.75rem;
-      flex: 1;
-      padding-inline: 0.375rem;
-    }
-
-    .demo-expand {
-      min-height: 2.75rem;
-      justify-content: center;
-    }
-
-    .demo-caption {
-      padding-inline: 0.125rem;
+  @media (max-width: 330px) {
+    .scene-scale {
+      --scene-scale: 0.425;
+      margin-bottom: -235.75px;
     }
   }
 }

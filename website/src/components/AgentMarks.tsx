@@ -36,7 +36,6 @@ export function ClaudeMark({ className }: MarkProps): React.ReactElement {
 export function PiMark({ className }: MarkProps): React.ReactElement {
   return (
     <svg aria-hidden="true" className={className} focusable="false" viewBox="0 0 800 800">
-      <rect width="800" height="800" rx="120" fill="#09090b" />
       <path
         fill="#fff"
         fillRule="evenodd"
@@ -54,7 +53,7 @@ export function PiMark({ className }: MarkProps): React.ReactElement {
 export function AgentGlyph({ agent }: { agent: AgentKind }): React.ReactElement {
   if (agent === "claude") {
     return (
-      <span className="cw-glyph" style={{ background: "rgb(240 235 222 / 0.82)" }}>
+      <span className="cw-glyph">
         <ClaudeMark className="size-[14px]" />
       </span>
     );
@@ -62,14 +61,14 @@ export function AgentGlyph({ agent }: { agent: AgentKind }): React.ReactElement 
 
   if (agent === "codex") {
     return (
-      <span className="cw-glyph" style={{ background: "#000" }}>
+      <span className="cw-glyph">
         <CodexMark className="size-4" />
       </span>
     );
   }
 
   return (
-    <span className="cw-glyph" style={{ background: "#000" }}>
+    <span className="cw-glyph">
       <PiMark className="size-[22px]" />
     </span>
   );
