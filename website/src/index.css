@@ -634,12 +634,12 @@
 
   /* --------------------------------------------------------- panel demo */
 
-  /* Match the shipping 18 pt screen margin. */
+  /* Float the panel over the desktop, as the shipping app does. */
   .panel-float {
     position: absolute;
-    z-index: 3;
-    top: 18px;
-    right: 18px;
+    z-index: 6;
+    top: 56px;
+    right: 34px;
     pointer-events: none;
   }
 
@@ -761,99 +761,202 @@
     transform-origin: top center;
   }
 
-  .macbook-stage {
+  .macos-desktop {
     position: relative;
+    overflow: hidden;
     width: 640px;
     height: 410px;
-  }
-
-  .macbook-lid {
-    position: absolute;
-    top: 0;
-    left: 10px;
-    width: 620px;
-    height: 388px;
     border: 1px solid rgb(255 255 255 / 0.16);
-    border-radius: 14px 14px 8px 8px;
-    background: linear-gradient(145deg, #62656b, #26282d 42%, #111216);
+    border-radius: 11px;
+    background:
+      radial-gradient(36rem 28rem at 36% 42%, rgb(239 175 47 / 0.45), transparent 68%),
+      linear-gradient(135deg, #6f3f05 0%, #bd7e12 48%, #8d580b 100%);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.23),
-      0 30px 54px -28px rgb(0 0 0 / 0.95);
+      inset 0 1px 0 rgb(255 255 255 / 0.18),
+      0 32px 64px -34px rgb(0 0 0 / 0.92);
   }
 
-  .macbook-camera {
+  .macos-wallpaper-orbit {
     position: absolute;
-    z-index: 5;
-    top: 2px;
-    left: calc(50% - 2px);
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: rgb(1 3 5 / 0.92);
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04);
+    z-index: 0;
+    width: 290px;
+    height: 290px;
+    border: 20px solid rgb(69 39 5 / 0.14);
+    border-radius: 44% 56% 61% 39%;
+    transform: rotate(24deg);
   }
 
-  .macbook-screen {
+  .macos-wallpaper-orbit::after {
+    content: "";
     position: absolute;
-    inset: 8px;
-    overflow: hidden;
-    border-radius: 7px;
-    background: #09090b;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.035);
+    inset: 34px;
+    border: 8px solid rgb(255 224 147 / 0.08);
+    border-radius: inherit;
   }
 
-  .macbook-base {
-    position: absolute;
-    top: 386px;
-    left: 0;
-    width: 640px;
-    height: 20px;
-    border-radius: 2px 2px 13px 13px;
-    background: linear-gradient(180deg, #8b8d92, #4a4c51 44%, #202126 78%, #121317);
-    clip-path: polygon(2.2% 0, 97.8% 0, 100% 38%, 97% 78%, 3% 78%, 0 38%);
-    box-shadow: 0 18px 28px -17px rgb(0 0 0 / 0.88);
+  .macos-wallpaper-orbit-a {
+    top: -140px;
+    right: -84px;
   }
 
-  .macbook-lip {
+  .macos-wallpaper-orbit-b {
+    bottom: -190px;
+    left: -100px;
+    transform: rotate(-18deg) scale(1.2);
+  }
+
+  .macos-menu-bar {
     position: absolute;
+    z-index: 4;
     top: 0;
-    left: calc(50% - 40px);
-    width: 80px;
+    inset-inline: 0;
+    display: flex;
+    height: 20px;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 9px;
+    background: rgb(84 48 3 / 0.45);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.08);
+    color: rgb(255 255 255 / 0.94);
+    font-size: 7.5px;
+    line-height: 1;
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    backdrop-filter: blur(14px) saturate(1.1);
+  }
+
+  .macos-menu-left,
+  .macos-menu-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+  }
+
+  .macos-menu-left strong {
+    font-weight: 650;
+  }
+
+  .macos-apple {
+    margin-right: 1px;
+    font-size: 10px;
+  }
+
+  .macos-menu-right {
+    gap: 8px;
+    font-size: 6.8px;
+    font-weight: 550;
+  }
+
+  .macos-control-center {
+    width: 10px;
+    height: 8px;
+    background:
+      radial-gradient(circle at 2px 2px, currentcolor 0 1.3px, transparent 1.5px),
+      radial-gradient(circle at 8px 6px, currentcolor 0 1.3px, transparent 1.5px),
+      linear-gradient(currentcolor, currentcolor) 2px 2px / 6px 1px no-repeat,
+      linear-gradient(currentcolor, currentcolor) 2px 6px / 6px 1px no-repeat;
+    opacity: 0.92;
+  }
+
+  .macos-wifi {
+    position: relative;
+    width: 12px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  .macos-wifi::before,
+  .macos-wifi::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    border: 1.2px solid currentcolor;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    transform: translateX(-50%) rotate(45deg);
+  }
+
+  .macos-wifi::before {
+    top: -4px;
+    width: 11px;
+    height: 11px;
+  }
+
+  .macos-wifi::after {
+    top: 1px;
+    width: 5px;
+    height: 5px;
+  }
+
+  .macos-battery {
+    position: relative;
+    display: flex;
+    width: 17px;
+    height: 8px;
+    align-items: center;
+    padding: 1px;
+    border: 1px solid rgb(255 255 255 / 0.78);
+    border-radius: 2px;
+  }
+
+  .macos-battery::after {
+    content: "";
+    position: absolute;
+    right: -2.5px;
+    width: 1.5px;
     height: 4px;
-    border-radius: 0 0 8px 8px;
-    background: rgb(18 19 22 / 0.58);
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.16);
+    border-radius: 0 1px 1px 0;
+    background: rgb(255 255 255 / 0.65);
+  }
+
+  .macos-battery > span {
+    width: 11px;
+    height: 4px;
+    border-radius: 1px;
+    background: rgb(255 255 255 / 0.9);
   }
 
   .terminal-window {
     position: absolute;
-    inset: 0;
+    z-index: 2;
+    top: 38px;
+    right: 24px;
+    bottom: 22px;
+    left: 24px;
     overflow: hidden;
+    border: 1px solid rgb(72 74 87 / 0.82);
+    border-radius: 8px;
     background:
-      radial-gradient(28rem 18rem at 24% 18%, rgb(57 68 104 / 0.14), transparent 70%),
-      #09090b;
+      radial-gradient(28rem 18rem at 24% 18%, rgb(57 68 104 / 0.1), transparent 70%),
+      #09090f;
+    box-shadow:
+      inset 0 0 0 1px rgb(0 0 0 / 0.78),
+      0 0 0 1px rgb(0 0 0 / 0.45),
+      0 16px 34px rgb(30 13 0 / 0.64),
+      0 0 15px rgb(0 0 0 / 0.42);
   }
 
   .terminal-titlebar {
     position: relative;
     display: flex;
-    height: 28px;
+    height: 25px;
     align-items: center;
-    justify-content: center;
     border-bottom: 1px solid rgb(255 255 255 / 0.055);
-    background: rgb(255 255 255 / 0.028);
+    background: #1d1d25;
   }
 
   .terminal-lights {
     position: absolute;
-    left: 12px;
+    z-index: 2;
+    left: 8px;
     display: flex;
-    gap: 6px;
+    gap: 5px;
   }
 
   .terminal-light {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.22);
   }
@@ -870,34 +973,82 @@
     background: #28c840;
   }
 
-  .terminal-title {
-    color: rgb(255 255 255 / 0.44);
-    font-size: 9px;
-    font-weight: 500;
+  .terminal-tabs {
+    position: absolute;
+    right: 27px;
+    left: 44px;
+    display: grid;
+    height: 20px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 3px;
+    color: rgb(255 255 255 / 0.43);
+    font-size: 7px;
+    font-weight: 550;
+    text-align: center;
   }
 
-  .terminal-body {
-    padding: 18px 16px;
+  .terminal-tabs > span {
+    overflow: hidden;
+    padding: 4px 5px;
+    border-radius: 5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .terminal-tabs .terminal-tab-active {
+    background: rgb(255 255 255 / 0.13);
+    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.11);
+    color: rgb(255 255 255 / 0.78);
+  }
+
+  .terminal-new-tab {
+    position: absolute;
+    right: 8px;
+    color: rgb(255 255 255 / 0.68);
+    font-size: 13px;
+    font-weight: 300;
+    line-height: 1;
+  }
+
+  .terminal-panes {
+    display: grid;
+    height: calc(100% - 25px);
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .terminal-pane {
+    min-width: 0;
+    padding: 16px 14px;
     font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
-    font-size: 11px;
+    font-size: 8.5px;
+    font-weight: 520;
     line-height: 1.55;
     color: rgb(255 255 255 / 0.82);
   }
 
-  .terminal-body p {
+  .terminal-pane-primary {
+    border-right: 1px solid rgb(255 255 255 / 0.07);
+  }
+
+  .terminal-pane p {
     margin: 0;
   }
 
+  .terminal-spacer {
+    height: 14px;
+  }
+
   .terminal-path {
-    color: #67e8f9;
+    color: #49dfb2;
   }
 
   .terminal-branch {
-    color: #f472b6;
+    color: #ff4264;
   }
 
   .terminal-prompt {
-    color: #a5b4fc;
+    color: #28e89a;
   }
 
   .terminal-muted {
@@ -906,7 +1057,7 @@
 
   .terminal-cycle-line {
     position: relative;
-    width: 270px;
+    width: 250px;
     color: rgb(255 255 255 / 0.58);
   }
 

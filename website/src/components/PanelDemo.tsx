@@ -44,7 +44,7 @@ const STATUS_COLOR: Record<Status, string> = {
   working: "var(--cw-working)",
 };
 
-const SCENE_LABEL = `A MacBook terminal with the CodeWindow panel floating at the top right. The panel shows three rows: ${ROWS.map(
+const SCENE_LABEL = `A macOS desktop with a Ghostty terminal and the CodeWindow panel floating at the top right. The panel shows three rows: ${ROWS.map(
   (row) => `${row.action} ${row.primary} in ${row.project}`,
 ).join("; ")}.`;
 
@@ -111,26 +111,44 @@ function TerminalContent(): React.ReactElement {
           <span className="terminal-light terminal-light-minimize" />
           <span className="terminal-light terminal-light-zoom" />
         </span>
-        <span className="terminal-title">codewindow — zsh — 92×24</span>
+        <span className="terminal-tabs">
+          <span>runtime</span>
+          <span>coding-agents</span>
+          <span className="terminal-tab-active">codewindow</span>
+        </span>
+        <span className="terminal-new-tab">+</span>
       </div>
 
-      <div className="terminal-body">
-        <p>
-          <span className="terminal-path">~/Code/codewindow</span>{" "}
-          <span className="terminal-branch">git:(main)</span>
-        </p>
-        <p>
-          <span className="terminal-prompt">❯</span> swift build --configuration release
-        </p>
-        <p className="terminal-muted">Building for production...</p>
-        <p className="terminal-muted">[2/5] Write swift-version--1AB21518FC5DEDBE.txt</p>
-        <p className="terminal-cycle-line">
-          <span className="cw-frame-a">[3/5] Compiling CodeWindowApp AgentLogo.swift</span>
-          <span className="cw-frame-b">[4/5] Linking CodeWindow</span>
-        </p>
-        <p className="terminal-cursor-line">
-          <span className="terminal-cursor" />
-        </p>
+      <div className="terminal-panes">
+        <div className="terminal-pane terminal-pane-primary">
+          <p className="terminal-muted">Last login: Sun Aug 16 20:59:54 on ttys013</p>
+          <p>
+            <span className="terminal-prompt">➜</span>{" "}
+            <span className="terminal-path">codewindow</span>{" "}
+            <span className="terminal-branch">git:(main)</span>
+          </p>
+          <p className="terminal-spacer" />
+          <p>
+            <span className="terminal-prompt">❯</span> swift build --configuration release
+          </p>
+          <p className="terminal-muted">Building for production...</p>
+          <p className="terminal-muted">[2/5] Write swift-version--1AB21518FC5DEDBE.txt</p>
+          <p className="terminal-cycle-line">
+            <span className="cw-frame-a">[3/5] Compiling CodeWindowApp AgentLogo.swift</span>
+            <span className="cw-frame-b">[4/5] Linking CodeWindow</span>
+          </p>
+          <p className="terminal-cursor-line">
+            <span className="terminal-cursor" />
+          </p>
+        </div>
+        <div className="terminal-pane terminal-pane-secondary">
+          <p className="terminal-muted">Last login: Sun Aug 16 21:04:08 on ttys014</p>
+          <p>
+            <span className="terminal-prompt">➜</span>{" "}
+            <span className="terminal-path">codewindow</span>{" "}
+            <span className="terminal-branch">git:(main)</span>
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -146,21 +164,32 @@ function CodeWindowPanel(): React.ReactElement {
   );
 }
 
-function MacBookScene(): React.ReactElement {
+function MacOSScene(): React.ReactElement {
   return (
     <div aria-label={SCENE_LABEL} className="scene-scale" role="img">
-      <div className="macbook-stage">
-        <div aria-hidden="true" className="macbook-lid">
-          <span className="macbook-camera" />
-          <div className="macbook-screen">
-            <TerminalContent />
-            <div className="panel-float">
-              <CodeWindowPanel />
-            </div>
-          </div>
+      <div className="macos-desktop">
+        <span aria-hidden="true" className="macos-wallpaper-orbit macos-wallpaper-orbit-a" />
+        <span aria-hidden="true" className="macos-wallpaper-orbit macos-wallpaper-orbit-b" />
+        <div aria-hidden="true" className="macos-menu-bar">
+          <span className="macos-menu-left">
+            <span className="macos-apple"></span>
+            <strong>Ghostty</strong>
+            <span>File</span>
+            <span>Edit</span>
+            <span>View</span>
+            <span>Window</span>
+            <span>Help</span>
+          </span>
+          <span className="macos-menu-right">
+            <span className="macos-control-center" />
+            <span className="macos-wifi" />
+            <span className="macos-battery"><span /></span>
+            <span>Sun Aug 16&nbsp;&nbsp;21:09</span>
+          </span>
         </div>
-        <div aria-hidden="true" className="macbook-base">
-          <span className="macbook-lip" />
+        <TerminalContent />
+        <div className="panel-float">
+          <CodeWindowPanel />
         </div>
       </div>
     </div>
@@ -172,7 +201,7 @@ export function PanelDemo(): React.ReactElement {
     <figure className="demo-figure">
       <div className="demo-frame">
         <div className="demo-viewport">
-          <MacBookScene />
+          <MacOSScene />
         </div>
       </div>
     </figure>
