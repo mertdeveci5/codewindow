@@ -13,6 +13,7 @@ struct PanelNotice: Equatable, Sendable {
 /// No timers, no clocks, no repeating animation. The panel only moves when state moves.
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
+    @ObservedObject var updateReminder: UpdateReminder
     let reportHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
     let checkHooks: () async -> Bool
@@ -77,6 +78,18 @@ struct PanelContentView: View {
                 )
                 .transition(.opacity)
             }
+            if hooksInstalled == true, store.sessions.contains(where: \.isDiagnostic) {
+                HookRestartRow(
+                    showsCodexTrustStep: store.sessions.contains {
+                        $0.isDiagnostic && $0.agent == .codex
+                    }
+                )
+                    .transition(.opacity)
+            }
+            if let availableVersion = updateReminder.availableVersion {
+                AvailableUpdateRow(version: availableVersion, showUpdate: checkForUpdates)
+                    .transition(.opacity)
+            }
             if store.sessions.isEmpty {
                 EmptyRow()
                     .transition(.opacity)
@@ -86,6 +99,7 @@ struct PanelContentView: View {
                         session: session,
                         showsDivider: index > 0,
                         reduceMotion: reduceMotion,
+                        hooksInstalled: hooksInstalled,
                         select: { select(session) },
                         hoverChanged: { hoverSession(session, $0) }
                     )
@@ -95,6 +109,7 @@ struct PanelContentView: View {
         }
         .animation(motion, value: store.sessions.map(\.id))
         .animation(motion, value: hooksInstalled)
+        .animation(motion, value: updateReminder.availableVersion)
         .animation(motion, value: notice)
     }
 
@@ -135,98 +150,13 @@ struct PanelContentView: View {
     }
 }
 
-// MARK: - Rows
-
-private struct HookSetupRow: View {
-    let isInstalling: Bool
-    let install: () -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(spacing: PanelMetrics.glyphGap) {
-            Image(systemName: "link.circle.fill")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(PanelPalette.working)
-                .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
-
-            VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
-                Text("Connect your agents")
-                    .font(.system(size: PanelMetrics.actionSize, weight: .regular))
-                    .foregroundStyle(PanelPalette.title)
-                Text("Install hooks for live updates")
-                    .font(.system(size: PanelMetrics.metaSize, weight: .regular))
-                    .foregroundStyle(PanelPalette.meta)
-            }
-
-            Spacer(minLength: 4)
-
-            Button(action: install) {
-                Text(isInstalling ? "Installing…" : "Install")
-                    .font(.system(size: PanelMetrics.metaSize, weight: .medium))
-                    .foregroundStyle(PanelPalette.title)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.white.opacity(0.10)))
-                    .contentShape(Capsule())
-            }
-                .buttonStyle(.plain)
-                .disabled(isInstalling)
-
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(PanelPalette.meta)
-                    .frame(width: 16, height: 20)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Not now")
-        }
-        .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
-        .frame(height: PanelMetrics.rowHeight)
-        .overlay(alignment: .bottom) {
-            PanelPalette.divider
-                .frame(height: PanelMetrics.separatorHeight)
-                .padding(.leading, PanelMetrics.separatorInset)
-                .padding(.trailing, PanelMetrics.rowInsetHorizontal)
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
-
-private struct NoticeRow: View {
-    let notice: PanelNotice
-
-    var body: some View {
-        HStack(spacing: PanelMetrics.glyphGap) {
-            Image(systemName: notice.succeeded ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(notice.succeeded ? PanelPalette.working : PanelPalette.attention)
-                .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
-
-            Text(notice.message)
-                .font(.system(size: PanelMetrics.metaSize, weight: .regular))
-                .foregroundStyle(PanelPalette.title)
-                .lineLimit(1)
-
-            Spacer(minLength: 6)
-        }
-        .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
-        .frame(height: PanelMetrics.rowHeight)
-        .overlay(alignment: .bottom) {
-            PanelPalette.divider
-                .frame(height: PanelMetrics.separatorHeight)
-                .padding(.leading, PanelMetrics.separatorInset)
-                .padding(.trailing, PanelMetrics.rowInsetHorizontal)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(notice.message)
-    }
-}
+// MARK: - Session rows
 
 private struct SessionRow: View {
     let session: PresentedSession
     let showsDivider: Bool
     let reduceMotion: Bool
+    let hooksInstalled: Bool?
     let select: () -> Void
     let hoverChanged: (Bool) -> Void
 
@@ -281,13 +211,13 @@ private struct SessionRow: View {
     }
 
     private var accessibilityValue: String {
-        session.accessibilityDescription
+        session.accessibilityDescription(hooksInstalled: hooksInstalled)
     }
 
     /// Identity is supporting metadata; the changing live action remains dominant.
     private var identityLine: some View {
         HStack(spacing: 4) {
-            Text(session.metadataLabel)
+            Text(session.metadataLabel(hooksInstalled: hooksInstalled))
                 .fixedSize()
             Text("·")
             Text(session.projectLabel)

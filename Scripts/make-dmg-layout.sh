@@ -10,6 +10,12 @@ mount_point="$working_directory/mount"
 disk_image="$working_directory/layout.dmg"
 mounted=0
 
+mounted_volumes=(/Volumes/CodeWindow(N) /Volumes/CodeWindow\ *(N))
+if (( ${#mounted_volumes} > 0 )); then
+    print -u2 -- "Eject existing CodeWindow disk images before regenerating the Finder layout."
+    exit 1
+fi
+
 cleanup() {
     if (( mounted )); then
         /usr/bin/hdiutil detach "$mount_point" >/dev/null 2>&1 || true
@@ -51,9 +57,11 @@ on run argv
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 112
         set text size of viewOptions to 14
+        -- Finder records a volume-relative alias, so keep this volume name aligned
+        -- with the public disk image in package-release.sh.
         set background picture of viewOptions to file ".background:CodeWindow.jpg" of targetFolder
-        set position of item "CodeWindow.app" of targetFolder to {180, 190}
-        set position of item "Applications" of targetFolder to {540, 190}
+        set position of item "CodeWindow.app" of targetFolder to {180, 230}
+        set position of item "Applications" of targetFolder to {540, 230}
         update targetFolder without registering applications
         delay 2
         close installerWindow

@@ -70,6 +70,15 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
         return (hasPreview ? actionLabel : agent.displayName).lowercased()
     }
 
+    func metadataLabel(hooksInstalled: Bool?) -> String {
+        guard isDiagnostic else { return metadataLabel }
+        switch hooksInstalled {
+        case nil: return "checking setup"
+        case false: return "setup needed"
+        case true: return "restart needed"
+        }
+    }
+
     var usesMonospacedPreview: Bool {
         guard case let .reported(state) = self else { return false }
         return state.action == .runningCommand && state.actionPreview != nil
@@ -108,6 +117,11 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
             parts.append(statusDescription)
         }
         return parts.joined(separator: ", ")
+    }
+
+    func accessibilityDescription(hooksInstalled: Bool?) -> String {
+        guard isDiagnostic, hooksInstalled == true else { return accessibilityDescription }
+        return accessibilityDescription + ", restart the agent and trust hooks if prompted"
     }
 
     var updatedAt: Date {

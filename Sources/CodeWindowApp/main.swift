@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionsCancellable: AnyCancellable?
     private var isManuallyHidden = false
     private var updaterController: SPUStandardUpdaterController?
+    private lazy var updateReminder = UpdateReminder(isPanelManuallyHidden: { [weak self] in
+        self?.isManuallyHidden ?? true
+    })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -34,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 updaterController = SPUStandardUpdaterController(
                     startingUpdater: true,
                     updaterDelegate: nil,
-                    userDriverDelegate: nil
+                    userDriverDelegate: updateReminder
                 )
             }
 
@@ -91,6 +94,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 let behavior = panel.collectionBehavior
                 let detected = store.sessions.filter(\.isDiagnostic).count
+                let diagnosticFixture = PresentedSession.detected(TerminalAgentProcess(
+                    agent: .codex,
+                    process: ProcessStamp(pid: 1, startedAtSeconds: 1, startedAtMicroseconds: 0),
+                    projectLabel: "codewindow"
+                ))
+                let diagnosticGuidanceWorks =
+                    diagnosticFixture.metadataLabel(hooksInstalled: nil) == "checking setup"
+                    && diagnosticFixture.metadataLabel(hooksInstalled: false) == "setup needed"
+                    && diagnosticFixture.metadataLabel(hooksInstalled: true) == "restart needed"
+                    && diagnosticFixture.accessibilityDescription(hooksInstalled: true)
+                        .contains("trust hooks if prompted")
+                let visibleReminder = UpdateReminder(isPanelManuallyHidden: { false })
+                let hiddenReminder = UpdateReminder(isPanelManuallyHidden: { true })
+                let updateRoutingWorks =
+                    !visibleReminder.shouldLetSparklePresent(immediateFocus: false)
+                    && visibleReminder.shouldLetSparklePresent(immediateFocus: true)
+                    && hiddenReminder.shouldLetSparklePresent(immediateFocus: false)
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
                 let hasSparkleFramework = FileManager.default.fileExists(
                     atPath: Bundle.main.bundleURL
@@ -126,6 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && hasAppIcon
                     && hasSparkleFramework
                     && hasSparkleConfiguration
+                    && diagnosticGuidanceWorks
+                    && updateRoutingWorks
                     && trackpadMoveWorks
                     && momentumMoveWorks
                     && validPositionWasPreserved
@@ -140,6 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "width=\(Int(panel.frame.width)) "
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
                         + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
+                        + "hookGuidance=\(diagnosticGuidanceWorks) "
+                        + "updateRouting=\(updateRoutingWorks) "
                         + "trackpad=\(trackpadMoveWorks) momentum=\(momentumMoveWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
                         + "inspector=\(inspectorWorks) transition=\(inspectorTransitionWorks) "
@@ -233,6 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let content = PanelContentView(
             store: store,
+            updateReminder: updateReminder,
             reportHeight: { [weak self, weak panel] height in
                 guard let self, let panel else { return }
                 self.resize(panel: panel, to: height)
