@@ -74,8 +74,8 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
         guard isDiagnostic else { return metadataLabel }
         switch hooksInstalled {
         case nil: return "checking setup"
-        case false: return "setup needed"
-        case true: return "restart needed"
+        case .some(false): return "setup needed"
+        case .some(true): return "restart needed"
         }
     }
 
