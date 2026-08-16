@@ -12,6 +12,8 @@ disk_image_checksum="$disk_image.sha256"
 appcast="$output_dir/appcast.xml"
 notary_log="$output_dir/notary-log.json"
 disk_image_notary_log="$output_dir/dmg-notary-log.json"
+dmg_layout="$repo_dir/Resources/DMG/.DS_Store"
+dmg_background="$repo_dir/Resources/DMG/Background.png"
 temporary_archive="$archive.tmp"
 temporary_checksum="$checksum.tmp"
 temporary_disk_image="$disk_image.tmp.dmg"
@@ -161,11 +163,15 @@ cleanup_dmg() {
 }
 trap cleanup_dmg EXIT
 /usr/bin/ditto "$app_dir" "$dmg_staging/CodeWindow.app"
+/bin/mkdir -p "$dmg_staging/.background"
+/usr/bin/ditto "$dmg_background" "$dmg_staging/.background/CodeWindow.png"
+/usr/bin/ditto "$dmg_layout" "$dmg_staging/.DS_Store"
 /bin/ln -s /Applications "$dmg_staging/Applications"
 /bin/rm -f "$temporary_disk_image" "$temporary_disk_image_checksum"
 /usr/bin/hdiutil create \
     -volname "CodeWindow" \
     -srcfolder "$dmg_staging" \
+    -fs HFS+ \
     -format UDZO \
     -ov \
     "$temporary_disk_image"

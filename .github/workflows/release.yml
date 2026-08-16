@@ -111,6 +111,8 @@ jobs:
           test -d "$mount_point/CodeWindow.app"
           test -L "$mount_point/Applications"
           test "$(readlink "$mount_point/Applications")" = "/Applications"
+          cmp "$mount_point/.DS_Store" Resources/DMG/.DS_Store
+          cmp "$mount_point/.background/CodeWindow.png" Resources/DMG/Background.png
           xcrun stapler validate "$mount_point/CodeWindow.app"
           codesign --verify --deep --strict --verbose=2 "$mount_point/CodeWindow.app"
           spctl --assess --type execute --verbose=4 "$mount_point/CodeWindow.app"
