@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.11-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.12-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -114,7 +114,8 @@ Build the universal release archive:
 
 The archive and its SHA-256 checksum are written to `build/`.
 
-After changing the disk image background or icon positions, regenerate its Finder layout on macOS:
+After changing the disk image icon positions, regenerate its Finder layout on
+macOS:
 
 ```sh
 ./Scripts/make-dmg-layout.sh

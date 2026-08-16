@@ -2,7 +2,6 @@
 set -euo pipefail
 
 repo_dir=${0:A:h:h}
-background="$repo_dir/Resources/DMG/Background.jpg"
 layout="$repo_dir/Resources/DMG/.DS_Store"
 working_directory=$(/usr/bin/mktemp -d /tmp/codewindow-dmg-layout.XXXXXX)
 staging="$working_directory/staging"
@@ -24,8 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-/bin/mkdir -p "$staging/.background" "$staging/CodeWindow.app" "$mount_point"
-/usr/bin/ditto "$background" "$staging/.background/CodeWindow.jpg"
+/bin/mkdir -p "$staging/CodeWindow.app" "$mount_point"
 /bin/ln -s /Applications "$staging/Applications"
 /usr/bin/hdiutil create \
     -volname "CodeWindow" \
@@ -57,9 +55,6 @@ on run argv
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 112
         set text size of viewOptions to 14
-        -- Finder records a volume-relative alias, so keep this volume name aligned
-        -- with the public disk image in package-release.sh.
-        set background picture of viewOptions to file ".background:CodeWindow.jpg" of targetFolder
         set position of item "CodeWindow.app" of targetFolder to {180, 230}
         set position of item "Applications" of targetFolder to {540, 230}
         update targetFolder without registering applications
