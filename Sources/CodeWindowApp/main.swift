@@ -71,7 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let smokeSession = store.sessions.first(where: { $0.id == "smoke-session" })
                 if let session = smokeSession {
                     inspector?.rowHoverChanged(session, isHovered: true)
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                }
+                let presentationDeadline = Date().addingTimeInterval(2)
+                while panel.childWindows?.first?.isVisible != true,
+                      Date() < presentationDeadline {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.02))
                 }
                 let inspectorPanel = panel.childWindows?.first
                 let inspectorWorks = inspectorPanel?.isVisible == true
@@ -83,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     inspector?.rowHoverChanged(session, isHovered: false)
                     RunLoop.current.run(until: Date().addingTimeInterval(0.28))
                     inspector?.rowHoverChanged(session, isHovered: true)
-                    let transitionDeadline = Date().addingTimeInterval(1)
+                    let transitionDeadline = Date().addingTimeInterval(2)
                     while (inspectorPanel?.alphaValue ?? 0) <= 0.95, Date() < transitionDeadline {
                         RunLoop.current.run(until: Date().addingTimeInterval(0.02))
                     }

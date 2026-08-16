@@ -1,10 +1,10 @@
-export const VERSION = "0.1.12";
+export const VERSION = "0.1.13";
 
 export const REPO_URL = "https://github.com/mertdeveci5/codewindow";
 
 export const RELEASES_URL = "https://github.com/mertdeveci5/codewindow/releases";
 
 export const DOWNLOAD_URL =
-  "https://github.com/mertdeveci5/codewindow/releases/download/v0.1.12/CodeWindow-v0.1.12-macOS-universal.dmg";
+  "https://github.com/mertdeveci5/codewindow/releases/download/v0.1.13/CodeWindow-v0.1.13-macOS-universal.dmg";
 
 export const SETUP_PROMPT_URL = "/skill.md";
