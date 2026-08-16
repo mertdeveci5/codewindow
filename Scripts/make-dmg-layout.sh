@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir=${0:A:h:h}
-background="$repo_dir/Resources/DMG/Background.png"
+background="$repo_dir/Resources/DMG/Background.jpg"
 layout="$repo_dir/Resources/DMG/.DS_Store"
 working_directory=$(/usr/bin/mktemp -d /tmp/codewindow-dmg-layout.XXXXXX)
 staging="$working_directory/staging"
@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT
 
 /bin/mkdir -p "$staging/.background" "$staging/CodeWindow.app" "$mount_point"
-/usr/bin/ditto "$background" "$staging/.background/CodeWindow.png"
+/usr/bin/ditto "$background" "$staging/.background/CodeWindow.jpg"
 /bin/ln -s /Applications "$staging/Applications"
 /usr/bin/hdiutil create \
     -volname "CodeWindow" \
@@ -46,14 +46,14 @@ on run argv
         set toolbar visible of installerWindow to false
         set statusbar visible of installerWindow to false
         set pathbar visible of installerWindow to false
-        set bounds of installerWindow to {160, 120, 672, 660}
+        set bounds of installerWindow to {120, 100, 840, 632}
         set viewOptions to icon view options of installerWindow
         set arrangement of viewOptions to not arranged
-        set icon size of viewOptions to 96
-        set text size of viewOptions to 13
-        set background picture of viewOptions to file ".background:CodeWindow.png" of targetFolder
-        set position of item "CodeWindow.app" of targetFolder to {145, 275}
-        set position of item "Applications" of targetFolder to {367, 275}
+        set icon size of viewOptions to 112
+        set text size of viewOptions to 14
+        set background picture of viewOptions to file ".background:CodeWindow.jpg" of targetFolder
+        set position of item "CodeWindow.app" of targetFolder to {180, 190}
+        set position of item "Applications" of targetFolder to {540, 190}
         update targetFolder without registering applications
         delay 2
         close installerWindow
