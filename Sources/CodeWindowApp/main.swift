@@ -52,10 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         activity: .idle,
                         projectLabel: "codewindow",
                         action: .waiting,
-                        feedEvent: SessionFeedEvent(
+                        actionPreview: "Inspector smoke fixture with a subject long enough to wrap",
+                        feedEvents: [SessionFeedEvent(
                             kind: .assistant,
                             text: "Inspector smoke fixture"
-                        ),
+                        )],
                         process: process
                     ),
                     to: smokeDirectory

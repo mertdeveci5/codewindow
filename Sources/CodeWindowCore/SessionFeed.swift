@@ -37,6 +37,19 @@ public struct SessionFeedEvent: Codable, Equatable, Identifiable, Sendable {
 public enum SessionFeed {
     public static let maximumEvents = 40
 
+    /// A state file holds a short run of recent events, not just the newest one. The app learns
+    /// about writes through a directory notification that coalesces, so two events landing
+    /// between reads would otherwise leave the older one unseen forever.
+    public static let maximumPersistedEvents = 4
+
+    public static func persisted(
+        _ events: [SessionFeedEvent],
+        appending event: SessionFeedEvent?
+    ) -> [SessionFeedEvent] {
+        guard let event else { return Array(events.suffix(maximumPersistedEvents)) }
+        return Array((events + [event]).suffix(maximumPersistedEvents))
+    }
+
     public static func appending(
         _ event: SessionFeedEvent,
         to events: [SessionFeedEvent]

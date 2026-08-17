@@ -75,6 +75,15 @@ print(state["action"], state.get("actionPreview"), sep="\t")
 ' "$1"
 }
 
+report_feed_kinds() {
+    /usr/bin/python3 -c '
+import glob, json, sys
+files = sorted(glob.glob(sys.argv[1] + "/*.json"))
+state = json.load(open(files[0]))
+print(",".join(event["kind"] for event in state.get("feedEvents", [])))
+' "$1"
+}
+
 for agent in claude codex; do
     if [[ "$agent" == "claude" ]]; then
         configuration="$home/.claude/settings.json"
@@ -100,6 +109,15 @@ for agent in claude codex; do
     finished_row=$(report_state "$agent_state")
     if [[ "$finished_row" != $'runningCommand\tswift build' ]]; then
         print -u2 -- "$agent row after a finished tool: $finished_row"
+        exit 1
+    fi
+
+    # The app hears about these writes through one coalescing notification, so the file has to
+    # still carry the call that the completion resolves. Otherwise the inspector shows a bare
+    # result row with no idea what ran.
+    feed_kinds=$(report_feed_kinds "$agent_state")
+    if [[ "$feed_kinds" != "user,toolCall,toolResult" ]]; then
+        print -u2 -- "$agent state file carries: $feed_kinds"
         exit 1
     fi
 

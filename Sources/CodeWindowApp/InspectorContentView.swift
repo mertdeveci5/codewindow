@@ -30,6 +30,18 @@ struct InspectorContentView: View {
         VStack(spacing: 0) {
             header(for: session)
 
+            // The panel row is one line by design, so the inspector is where its text has to be
+            // readable in full — including before any feed events have arrived.
+            if session.hasPreview {
+                Text(session.primaryLabel)
+                    .font(.system(size: PanelMetrics.actionSize, weight: .regular))
+                    .foregroundStyle(PanelPalette.title)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
+                    .padding(.bottom, 10)
+            }
+
             PanelPalette.divider
                 .frame(height: PanelMetrics.separatorHeight)
                 .padding(.horizontal, PanelMetrics.rowInsetHorizontal)

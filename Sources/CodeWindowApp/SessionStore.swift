@@ -13,6 +13,7 @@ final class SessionStore: ObservableObject {
     private var directorySource: DispatchSourceFileSystemObject?
     private var processSources: [String: DispatchSourceProcess] = [:]
     private var discoveryTimer: DispatchSourceTimer?
+    private var deliveredEventIDs: [String: Set<UUID>] = [:]
     private let discoveryQueue = DispatchQueue(label: "dev.codewindow.process-discovery", qos: .utility)
     private var isDiscovering = false
 
@@ -105,19 +106,26 @@ final class SessionStore: ObservableObject {
         let wasEmpty = sessions.isEmpty
         var hooked: [SessionState] = []
         var nextFeeds = feeds
+        // A state file re-offers the events it still carries. Remembering the last run it
+        // carried folds each event in exactly once without holding every id ever seen: an
+        // event that has slid out of the file can never be offered again.
+        var nextDeliveredEventIDs: [String: Set<UUID>] = [:]
         for entry in StateFiles.all(in: directory) {
             guard entry.state.activity != .ended, ProcessInspector.isCurrent(entry.state.process) else {
                 try? FileManager.default.removeItem(at: entry.url)
                 continue
             }
             hooked.append(entry.state)
-            if let event = entry.state.feedEvent {
+            let delivered = deliveredEventIDs[entry.state.id] ?? []
+            for event in entry.state.feedEvents where !delivered.contains(event.id) {
                 nextFeeds[entry.state.id] = SessionFeed.appending(
                     event,
                     to: nextFeeds[entry.state.id] ?? []
                 )
             }
+            nextDeliveredEventIDs[entry.state.id] = Set(entry.state.feedEvents.map(\.id))
         }
+        deliveredEventIDs = nextDeliveredEventIDs
 
         let hookedProcesses = Set(hooked.map(\.process))
         let diagnostics = discoveredProcesses?.map(PresentedSession.detected)

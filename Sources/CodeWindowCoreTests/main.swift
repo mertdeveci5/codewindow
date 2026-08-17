@@ -126,6 +126,25 @@ func testSessionFeed() throws {
     try require(fallbackLifecycle[0].id == fallbackRunning.id, "ID-less completion replaced the wrong row")
     try require(fallbackLifecycle[0].succeeded == false, "ID-less failure status was lost")
 
+    // The app hears about writes through a coalescing directory notification, so a state file
+    // carries the recent run and every event in it has to survive the trip.
+    var persisted: [SessionFeedEvent] = []
+    var written: [SessionFeedEvent] = []
+    for index in 0..<(SessionFeed.maximumPersistedEvents + 2) {
+        let event = SessionFeedEvent(kind: .toolResult, text: "tool \(index)", succeeded: true)
+        written.append(event)
+        persisted = SessionFeed.persisted(persisted, appending: event)
+    }
+    try require(
+        persisted.count == SessionFeed.maximumPersistedEvents,
+        "Persisted run did not enforce its limit"
+    )
+    try require(persisted == Array(written.suffix(persisted.count)), "Persisted run kept the wrong events")
+    try require(
+        SessionFeed.persisted(persisted, appending: nil) == persisted,
+        "A write without an event dropped the run the file was carrying"
+    )
+
     var events: [SessionFeedEvent] = []
     for index in 0...SessionFeed.maximumEvents {
         events = SessionFeed.appending(
@@ -193,8 +212,8 @@ func testHookPayloads() throws {
         "Task preview state missing"
     )
     try require(taskState.taskPreview == "Please verify the compact agent preview without exposing private output", "Task preview mismatch")
-    try require(taskState.feedEvent?.kind == .user, "User prompt was not added to the feed")
-    try require(taskState.feedEvent?.text == taskState.taskPreview, "User feed text mismatch")
+    try require(taskState.feedEvents.last?.kind == .user, "User prompt was not added to the feed")
+    try require(taskState.feedEvents.last?.text == taskState.taskPreview, "User feed text mismatch")
 
     let commandState = try unwrap(
         HookPayload(json: [
@@ -209,8 +228,8 @@ func testHookPayloads() throws {
     )
     try require(commandState.taskPreview == taskState.taskPreview, "Task preview was not carried forward")
     try require(commandState.actionPreview == "OPENAI_API_KEY=•••• swift test --filter PreviewTests", "Command preview was not sanitized")
-    try require(commandState.feedEvent?.kind == .toolCall, "Tool call was not added to the feed")
-    try require(commandState.feedEvent?.detail == commandState.actionPreview, "Tool feed detail mismatch")
+    try require(commandState.feedEvents.last?.kind == .toolCall, "Tool call was not added to the feed")
+    try require(commandState.feedEvents.last?.detail == commandState.actionPreview, "Tool feed detail mismatch")
     let commandText = try unwrap(String(data: JSONEncoder().encode(commandState), encoding: .utf8), "Command state is not UTF-8")
     try require(!commandText.contains("sk-example-secret-value"), "Credential leaked into command preview")
 
@@ -224,10 +243,10 @@ func testHookPayloads() throws {
         ]).state(agent: .claude, process: process, previous: commandState),
         "Tool result state missing"
     )
-    try require(completedState.feedEvent?.kind == .toolResult, "Tool result was not added to the feed")
-    try require(completedState.feedEvent?.succeeded == true, "Successful tool result was marked failed")
+    try require(completedState.feedEvents.last?.kind == .toolResult, "Tool result was not added to the feed")
+    try require(completedState.feedEvents.last?.succeeded == true, "Successful tool result was marked failed")
     try require(
-        completedState.feedEvent?.operationKey == commandState.feedEvent?.operationKey,
+        completedState.feedEvents.last?.operationKey == commandState.feedEvents.last?.operationKey,
         "Matching tool lifecycle events did not receive the same opaque key"
     )
     try require(completedState.action == .runningCommand, "Finished tool handed the row back to thinking")
@@ -296,7 +315,7 @@ func testHookPayloads() throws {
         "Failed tool result state missing"
     )
     try require(failedState.activity == .needsAttention, "Failed Pi tool did not request attention")
-    try require(failedState.feedEvent?.succeeded == false, "Failed tool result was marked successful")
+    try require(failedState.feedEvents.last?.succeeded == false, "Failed tool result was marked successful")
 
     let assistantState = try unwrap(
         HookPayload(json: [
@@ -307,9 +326,9 @@ func testHookPayloads() throws {
         ]).state(agent: .claude, process: process),
         "Assistant message state missing"
     )
-    try require(assistantState.feedEvent?.kind == .assistant, "Assistant reply was not added to the feed")
+    try require(assistantState.feedEvents.last?.kind == .assistant, "Assistant reply was not added to the feed")
     try require(
-        assistantState.feedEvent?.text == "Implemented the change using TOKEN=•••• and verified the tests.",
+        assistantState.feedEvents.last?.text == "Implemented the change using TOKEN=•••• and verified the tests.",
         "Assistant reply was not sanitized"
     )
 
@@ -322,7 +341,7 @@ func testHookPayloads() throws {
         ]).state(agent: .codex, process: process),
         "Long assistant message state missing"
     )
-    try require(longAssistantState.feedEvent?.text.count == 320, "Assistant message was not bounded")
+    try require(longAssistantState.feedEvents.last?.text.count == 320, "Assistant message was not bounded")
 
     let readState = try unwrap(
         HookPayload(json: [
@@ -498,6 +517,38 @@ func testStateFiles() throws {
     try require(
         boundedFeedByteCount <= StateFiles.maximumStateBytes,
         "Largest feed state exceeds the file limit"
+    )
+
+    // A file carries a run of events, so the size budget has to hold for a full one of the
+    // largest events the sanitizer allows. Overflowing it would silently drop the write.
+    var fullRunState = boundedFeedState
+    for index in 0..<(SessionFeed.maximumPersistedEvents + 1) {
+        fullRunState = try unwrap(
+            HookPayload(json: [
+                "session_id": "bounded-feed",
+                "hook_event_name": "Stop",
+                "cwd": "/tmp/codewindow",
+                "last_assistant_message": String(repeating: "\(index)", count: 1_000),
+            ]).state(agent: .codex, process: process, previous: fullRunState),
+            "Full run state missing"
+        )
+    }
+    try require(
+        fullRunState.feedEvents.count == SessionFeed.maximumPersistedEvents,
+        "Full run did not fill the file"
+    )
+    try StateFiles.write(fullRunState, to: directory)
+    let fullRunByteCount = try Data(
+        contentsOf: directory.appendingPathComponent("\(fullRunState.sessionKey).json")
+    ).count
+    try require(
+        fullRunByteCount <= StateFiles.maximumStateBytes,
+        "A full run of the largest events exceeds the file limit"
+    )
+    try require(
+        StateFiles.read(from: directory.appendingPathComponent("\(fullRunState.sessionKey).json"))?
+            .feedEvents == fullRunState.feedEvents,
+        "A full run did not survive the round trip"
     )
 
     let emojiTaskState = try unwrap(

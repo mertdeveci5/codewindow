@@ -126,9 +126,9 @@ public struct HookPayload: Sendable {
             action: presentation.action,
             taskPreview: taskPreview ?? previous?.taskPreview,
             actionPreview: actionPreview,
-            feedEvent: feedEvent(
-                action: presentation.action,
-                actionPreview: actionPreview
+            feedEvents: SessionFeed.persisted(
+                previous?.feedEvents ?? [],
+                appending: feedEvent(action: presentation.action, actionPreview: actionPreview)
             ),
             process: process,
             updatedAt: now

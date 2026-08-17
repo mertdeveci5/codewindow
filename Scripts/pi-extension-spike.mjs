@@ -56,6 +56,8 @@ async function readChangedState() {
   throw new Error("Pi event did not produce a fresh CodeWindow state within 3 seconds");
 }
 
+const latestEvent = (state) => state.feedEvents[state.feedEvents.length - 1];
+
 async function emit(event, payload = {}) {
   const handler = handlers.get(event);
   assert(handler, `missing Pi handler: ${event}`);
@@ -91,19 +93,19 @@ for (const state of [sessionStart, userPrompt, toolStart, toolEnd, assistant, sh
   assert.equal(state.process.pid, process.pid);
 }
 assert.equal(sessionStart.activity, "starting");
-assert.equal(userPrompt.feedEvent.kind, "user");
+assert.equal(latestEvent(userPrompt).kind, "user");
 assert.equal(userPrompt.taskPreview, "verify Pi integration");
 assert.equal(toolStart.action, "runningCommand");
 assert.equal(toolStart.actionPreview, "printf codewindow-pi-spike");
-assert.equal(toolStart.feedEvent.kind, "toolCall");
-assert.equal(toolEnd.feedEvent.kind, "toolResult");
-assert.equal(toolEnd.feedEvent.succeeded, true);
-assert.equal(toolEnd.feedEvent.operationKey, toolStart.feedEvent.operationKey);
+assert.equal(latestEvent(toolStart).kind, "toolCall");
+assert.equal(latestEvent(toolEnd).kind, "toolResult");
+assert.equal(latestEvent(toolEnd).succeeded, true);
+assert.equal(latestEvent(toolEnd).operationKey, latestEvent(toolStart).operationKey);
 // A finished tool keeps the row it started, instead of falling back to the task prompt.
 assert.equal(toolEnd.action, "runningCommand");
 assert.equal(toolEnd.actionPreview, "printf codewindow-pi-spike");
-assert.equal(assistant.feedEvent.kind, "assistant");
-assert.equal(assistant.feedEvent.text, "visible spike answer");
+assert.equal(latestEvent(assistant).kind, "assistant");
+assert.equal(latestEvent(assistant).text, "visible spike answer");
 // The closing message is the newest thing that happened, so it owns the row.
 assert.equal(assistant.actionPreview, "visible spike answer");
 assert(!JSON.stringify(assistant).includes("hidden-spike-reasoning"));

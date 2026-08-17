@@ -84,12 +84,30 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
     public let taskPreview: String?
     /// A short, sanitized subject for the tool that is currently running.
     public let actionPreview: String?
-    /// The latest sanitized event, retained in memory by the app while it runs.
-    public let feedEvent: SessionFeedEvent?
+    /// The newest sanitized events, oldest first. The app keeps the longer history in memory;
+    /// the file carries a short run so a coalesced directory notification cannot hide the
+    /// events written between two reads.
+    private let storedFeedEvents: [SessionFeedEvent]?
     public let process: ProcessStamp
     public let updatedAt: Date
 
+    public var feedEvents: [SessionFeedEvent] { storedFeedEvents ?? [] }
+
     public var id: String { sessionKey }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case sessionKey
+        case agent
+        case activity
+        case projectLabel
+        case action
+        case taskPreview
+        case actionPreview
+        case storedFeedEvents = "feedEvents"
+        case process
+        case updatedAt
+    }
 
     public init(
         sessionKey: String,
@@ -99,7 +117,7 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
         action: SafeAction,
         taskPreview: String? = nil,
         actionPreview: String? = nil,
-        feedEvent: SessionFeedEvent? = nil,
+        feedEvents: [SessionFeedEvent] = [],
         process: ProcessStamp,
         updatedAt: Date = Date()
     ) {
@@ -111,7 +129,7 @@ public struct SessionState: Codable, Equatable, Identifiable, Sendable {
         self.action = action
         self.taskPreview = taskPreview
         self.actionPreview = actionPreview
-        self.feedEvent = feedEvent
+        self.storedFeedEvents = feedEvents.isEmpty ? nil : feedEvents
         self.process = process
         self.updatedAt = updatedAt
     }

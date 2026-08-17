@@ -2,7 +2,9 @@ import Darwin
 import Foundation
 
 public enum StateFiles {
-    public static let maximumStateBytes = 1_024
+    /// Room for a short run of sanitized events. Every field that reaches this file is length
+    /// bounded before it is written, so this stays a backstop rather than a working limit.
+    public static let maximumStateBytes = 4_096
 
     public static func directory(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> URL {
         let url: URL
