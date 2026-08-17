@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct HookPayload: Sendable {
@@ -6,6 +7,7 @@ public struct HookPayload: Sendable {
     public let cwd: String
     public let toolName: String?
     public let notificationType: String?
+    private let toolOperationKey: String?
     private let submittedText: String?
     private let commandText: String?
     private let pathText: String?
@@ -29,6 +31,14 @@ public struct HookPayload: Sendable {
         let toolName = Self.string(in: json, keys: ["tool_name", "toolName"])
         self.toolName = toolName
         self.notificationType = Self.string(in: json, keys: ["notification_type", "notificationType"])
+        self.toolOperationKey = Self.operationKey(
+            sessionID: sessionID,
+            toolCallID: Self.string(
+                in: json,
+                keys: ["tool_call_id", "toolCallId", "tool_use_id", "toolUseId"]
+            ),
+            toolName: toolName
+        )
         self.submittedText = Self.string(in: json, keys: ["user_prompt", "userPrompt", "prompt"])
         self.assistantText = Self.string(
             in: json,
@@ -116,19 +126,22 @@ public struct HookPayload: Sendable {
             return SessionFeedEvent(
                 kind: .toolCall,
                 text: action.label,
-                detail: actionPreview
+                detail: actionPreview,
+                operationKey: toolOperationKey
             )
         case "posttooluse", "toolresult", "toolexecutionend":
             return SessionFeedEvent(
                 kind: .toolResult,
                 text: Self.toolLabel(toolName) ?? "tool",
-                succeeded: !toolFailed
+                succeeded: !toolFailed,
+                operationKey: toolOperationKey
             )
         case "posttoolusefailure":
             return SessionFeedEvent(
                 kind: .toolResult,
                 text: Self.toolLabel(toolName) ?? "tool",
-                succeeded: false
+                succeeded: false,
+                operationKey: toolOperationKey
             )
         case "permissionrequest":
             return SessionFeedEvent(kind: .attention, text: action.label)
@@ -192,6 +205,18 @@ public struct HookPayload: Sendable {
 
     private static func normalized(_ value: String) -> String {
         value.lowercased().filter(\.isLetter)
+    }
+
+    private static func operationKey(
+        sessionID: String,
+        toolCallID: String?,
+        toolName: String?
+    ) -> String? {
+        let identity = toolCallID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? toolName.flatMap { normalized($0).isEmpty ? nil : normalized($0) }
+        guard let identity else { return nil }
+        let digest = SHA256.hash(data: Data("\(sessionID)\u{0}\(identity)".utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func string(in json: [String: Any], keys: [String]) -> String? {

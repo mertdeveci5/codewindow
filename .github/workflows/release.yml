@@ -31,6 +31,8 @@ jobs:
           APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CODEWINDOW_POSTHOG_KEY: ${{ secrets.CODEWINDOW_POSTHOG_KEY }}
+          CODEWINDOW_POSTHOG_HOST: ${{ vars.CODEWINDOW_POSTHOG_HOST }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
@@ -41,6 +43,7 @@ jobs:
             APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD \
             APPLE_ID \
             APPLE_TEAM_ID \
+            CODEWINDOW_POSTHOG_KEY \
             SPARKLE_PRIVATE_KEY; do
             test -n "${!variable}"
           done

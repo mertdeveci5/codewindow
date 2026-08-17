@@ -100,6 +100,32 @@ func testSessionFeed() throws {
     try require(once == [first], "First feed event was not recorded")
     try require(SessionFeed.appending(first, to: once) == once, "Duplicate feed event was recorded")
 
+    let running = SessionFeedEvent(
+        kind: .toolCall,
+        text: "running command",
+        detail: "swift test",
+        operationKey: "operation-1"
+    )
+    let completed = SessionFeedEvent(
+        kind: .toolResult,
+        text: "Bash",
+        succeeded: true,
+        operationKey: "operation-1"
+    )
+    let lifecycle = SessionFeed.appending(completed, to: [first, running])
+    try require(lifecycle.count == 2, "Tool completion appended a duplicate row")
+    try require(lifecycle.last?.id == running.id, "Tool completion did not update the running row")
+    try require(lifecycle.last?.kind == .toolResult, "Running tool row did not become a result")
+    try require(lifecycle.last?.detail == "swift test", "Tool completion discarded the running detail")
+    try require(lifecycle.last?.succeeded == true, "Tool completion status was not retained")
+
+    let fallbackRunning = SessionFeedEvent(kind: .toolCall, text: "reading file", detail: "main.swift")
+    let fallbackResult = SessionFeedEvent(kind: .toolResult, text: "read", succeeded: false)
+    let fallbackLifecycle = SessionFeed.appending(fallbackResult, to: [fallbackRunning])
+    try require(fallbackLifecycle.count == 1, "ID-less completion appended a duplicate row")
+    try require(fallbackLifecycle[0].id == fallbackRunning.id, "ID-less completion replaced the wrong row")
+    try require(fallbackLifecycle[0].succeeded == false, "ID-less failure status was lost")
+
     var events: [SessionFeedEvent] = []
     for index in 0...SessionFeed.maximumEvents {
         events = SessionFeed.appending(
@@ -175,6 +201,7 @@ func testHookPayloads() throws {
             "hook_event_name": "PreToolUse",
             "cwd": "/tmp/codewindow",
             "tool_name": "Bash",
+            "tool_use_id": "tool-123",
             "tool_input": ["command": "OPENAI_API_KEY=sk-example-secret-value swift test\n--filter PreviewTests"],
         ]).state(agent: .claude, process: process, previousTaskPreview: taskState.taskPreview),
         "Command preview state missing"
@@ -192,11 +219,16 @@ func testHookPayloads() throws {
             "hook_event_name": "PostToolUse",
             "cwd": "/tmp/codewindow",
             "tool_name": "Bash",
+            "tool_use_id": "tool-123",
         ]).state(agent: .claude, process: process),
         "Tool result state missing"
     )
     try require(completedState.feedEvent?.kind == .toolResult, "Tool result was not added to the feed")
     try require(completedState.feedEvent?.succeeded == true, "Successful tool result was marked failed")
+    try require(
+        completedState.feedEvent?.operationKey == commandState.feedEvent?.operationKey,
+        "Matching tool lifecycle events did not receive the same opaque key"
+    )
 
     let failedState = try unwrap(
         HookPayload(json: [
@@ -427,6 +459,94 @@ func testStateFiles() throws {
     try require(ProcessInspector.stamp(pid: Int32.max) == nil, "Impossible PID accepted")
 }
 
+func testInstallationAnalytics() throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let support = root.appendingPathComponent("CodeWindow", isDirectory: true)
+    let host = try unwrap(URL(string: "https://us.i.posthog.com"), "PostHog host URL is invalid")
+    var requests: [(URL, Data)] = []
+
+    let first = try InstallationAnalytics.captureIfNeeded(
+        supportDirectory: support,
+        apiKey: "phc_test_project_token",
+        apiHost: host,
+        releaseVersion: "1.2.3",
+        architecture: "arm64"
+    ) { endpoint, body in
+        requests.append((endpoint, body))
+        return true
+    }
+    try require(first == .sent, "First installation event was not sent")
+    try require(requests.count == 1, "First install did not produce exactly one request")
+    try require(requests[0].0.absoluteString == "https://us.i.posthog.com/i/v0/e/", "Capture endpoint mismatch")
+    let payload = try unwrap(
+        JSONSerialization.jsonObject(with: requests[0].1) as? [String: Any],
+        "Installation analytics payload is invalid"
+    )
+    try require(payload["api_key"] as? String == "phc_test_project_token", "Project token missing")
+    try require(payload["event"] as? String == InstallationAnalytics.eventName, "Event name mismatch")
+    let identifier = try unwrap(payload["distinct_id"] as? String, "Anonymous installation ID missing")
+    try require(UUID(uuidString: identifier) != nil, "Installation ID is not anonymous UUID data")
+    let properties = try unwrap(payload["properties"] as? [String: Any], "Event properties missing")
+    try require(properties["release_version"] as? String == "1.2.3", "Release version missing")
+    try require(properties["platform"] as? String == "macOS", "Platform missing")
+    try require(properties["architecture"] as? String == "arm64", "Architecture missing")
+    try require(properties["$process_person_profile"] as? Bool == false, "Event creates a person profile")
+
+    let second = try InstallationAnalytics.captureIfNeeded(
+        supportDirectory: support,
+        apiKey: "phc_test_project_token",
+        apiHost: host,
+        releaseVersion: "1.2.3",
+        architecture: "arm64"
+    ) { endpoint, body in
+        requests.append((endpoint, body))
+        return true
+    }
+    try require(second == .alreadySent, "Repeat install was counted twice")
+    try require(requests.count == 1, "Repeat install sent another request")
+
+    try FileManager.default.removeItem(at: support)
+    let reinstalled = try InstallationAnalytics.captureIfNeeded(
+        supportDirectory: support,
+        apiKey: "phc_test_project_token",
+        apiHost: host,
+        releaseVersion: "1.2.3",
+        architecture: "arm64"
+    ) { endpoint, body in
+        requests.append((endpoint, body))
+        return true
+    }
+    try require(reinstalled == .sent, "Clean reinstall was not counted")
+    let reinstalledPayload = try unwrap(
+        JSONSerialization.jsonObject(with: requests[1].1) as? [String: Any],
+        "Reinstall analytics payload is invalid"
+    )
+    try require(
+        reinstalledPayload["distinct_id"] as? String != identifier,
+        "Clean reinstall reused the removed anonymous installation ID"
+    )
+
+    let failedSupport = root.appendingPathComponent("Failed", isDirectory: true)
+    var retryIdentifiers: [String] = []
+    for shouldSucceed in [false, true] {
+        let result = try InstallationAnalytics.captureIfNeeded(
+            supportDirectory: failedSupport,
+            apiKey: "phc_test_project_token",
+            apiHost: host,
+            releaseVersion: "1.2.3",
+            architecture: "arm64"
+        ) { _, body in
+            let body = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            if let id = body?["distinct_id"] as? String { retryIdentifiers.append(id) }
+            return shouldSucceed
+        }
+        try require(result == (shouldSucceed ? .sent : .failed), "Failed capture retry result mismatch")
+    }
+    try require(retryIdentifiers.count == 2, "Failed capture was not retried")
+    try require(retryIdentifiers[0] == retryIdentifiers[1], "Capture retry changed its anonymous ID")
+}
+
 func testTerminalAgentDiscovery() throws {
     let currentPID = ProcessInfo.processInfo.processIdentifier
     let discovered = ProcessInspector.terminalAgentProcesses()
@@ -435,6 +555,16 @@ func testTerminalAgentDiscovery() throws {
     try require(
         ProcessInspector.findAgentProcess(agent: .pi, startingAt: currentPID) == nil,
         "Short agent name matched an unrelated executable path"
+    )
+    try require(
+        ProcessInspector.agentKind(
+            executablePath: "/Users/person/.local/share/claude/versions/2.1.233"
+        ) == .claude,
+        "Version-named native Claude executable was not recognized"
+    )
+    try require(
+        ProcessInspector.agentKind(executablePath: "/tmp/claude/versions/not-a-version") == nil,
+        "Unrelated executable under a similar path was identified as Claude"
     )
 }
 
@@ -536,6 +666,12 @@ func testHookInstaller() throws {
         [.posixPermissions: 0o644],
         ofItemAtPath: locations.codexConfiguration.path
     )
+    try FileManager.default.createDirectory(
+        at: locations.legacyPiExtension.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("\(HookInstaller.piMarker)\nlegacy managed extension\n".utf8)
+        .write(to: locations.legacyPiExtension)
 
     let first = try HookInstaller.install(at: locations)
     try require(!first.changed.isEmpty, "First install changed nothing")
@@ -572,7 +708,14 @@ func testHookInstaller() throws {
     try require(piExtension.contains("event.isError"), "Pi tool failures are not forwarded")
     try require(piExtension.contains("message_end"), "Pi assistant message hook missing")
     try require(piExtension.contains("last_assistant_message"), "Pi assistant text is not forwarded")
-    try require(piExtension.contains(#"content.type === "text""#), "Pi visible text is not isolated from reasoning")
+    try require(piExtension.contains(#"part?.type === "text""#), "Pi visible text is not isolated from reasoning")
+    try require(piExtension.contains(#".join("\n")"#), "Pi extension contains an invalid newline literal")
+    try require(!piExtension.contains("import type"), "Pi extension still depends on TypeScript type imports")
+    try require(locations.piExtension.pathExtension == "js", "Pi extension is not plain JavaScript")
+    try require(
+        !FileManager.default.fileExists(atPath: locations.legacyPiExtension.path),
+        "Broken legacy Pi extension was not migrated"
+    )
     try require(!piExtension.contains("pi.on(\"tool_call\""), "Legacy Pi tool hook remains")
 
     let second = try HookInstaller.install(at: locations)
@@ -589,6 +732,7 @@ func testHookInstaller() throws {
     )
     try require(NSDictionary(dictionary: finalClaude).isEqual(to: original), "Claude config did not round trip")
     try require(!FileManager.default.fileExists(atPath: locations.piExtension.path), "Pi extension remains")
+    try require(!FileManager.default.fileExists(atPath: locations.legacyPiExtension.path), "Legacy Pi extension remains")
     try require(!FileManager.default.fileExists(atPath: locations.installedReporter.path), "Reporter remains")
     try require(!FileManager.default.fileExists(atPath: locations.supportDirectory.path), "Support directory remains")
 }
@@ -671,6 +815,10 @@ func testInstallRollback() throws {
             !FileManager.default.fileExists(atPath: locations.piExtension.path),
             "Pi extension was created despite rollback"
         )
+        try require(
+            !FileManager.default.fileExists(atPath: locations.legacyPiExtension.path),
+            "Legacy Pi extension was created despite rollback"
+        )
         let restoredClaude = try readJSON(locations.claudeConfiguration)
         try require(
             NSDictionary(dictionary: restoredClaude).isEqual(to: claudeOriginal),
@@ -692,6 +840,15 @@ func testCleanUninstall() throws {
     try require(untouched.changed.isEmpty, "Uninstall changed a home without CodeWindow hooks")
 
     _ = try HookInstaller.install(at: locations)
+    let unrelatedPiExtension = locations.piExtension
+        .deletingLastPathComponent()
+        .appendingPathComponent("unrelated-extension.js")
+    try Data("export default function () {}\n".utf8).write(to: unrelatedPiExtension)
+    let analyticsMarker = locations.supportDirectory.appendingPathComponent(".installation-analytics-sent")
+    let stateDirectory = locations.supportDirectory.appendingPathComponent("State", isDirectory: true)
+    try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+    try Data("sent\n".utf8).write(to: analyticsMarker)
+    try Data("{}\n".utf8).write(to: stateDirectory.appendingPathComponent("stale.json"))
     let legacyCodexBackup = locations.codexConfiguration
         .deletingLastPathComponent()
         .appendingPathComponent("hooks.json.codewindow-backup")
@@ -706,6 +863,7 @@ func testCleanUninstall() throws {
         locations.codexConfiguration,
         locations.claudeConfiguration,
         locations.piExtension,
+        locations.legacyPiExtension,
         locations.installedReporter,
         locations.supportDirectory,
         legacyCodexBackup,
@@ -714,27 +872,37 @@ func testCleanUninstall() throws {
         try require(!FileManager.default.fileExists(atPath: url.path), "Uninstall left \(url.lastPathComponent)")
     }
     try require(!HookInstaller.isInstalled(at: locations), "Fresh uninstall still reports installed")
+    try require(
+        FileManager.default.fileExists(atPath: unrelatedPiExtension.path),
+        "Uninstall removed an unrelated Pi extension"
+    )
 }
 
 func testForeignPiExtension() throws {
-    let root = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let reporter = root.appendingPathComponent("reporter")
-    try Data("reporter".utf8).write(to: reporter)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reporter.path)
-    let locations = InstallLocations(home: root.appendingPathComponent("home"), reporterSource: reporter)
-    try FileManager.default.createDirectory(at: locations.piExtension.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try Data("foreign content".utf8).write(to: locations.piExtension)
+    for useLegacyPath in [false, true] {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let reporter = root.appendingPathComponent("reporter")
+        try Data("reporter".utf8).write(to: reporter)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reporter.path)
+        let locations = InstallLocations(home: root.appendingPathComponent("home"), reporterSource: reporter)
+        let foreignExtension = useLegacyPath ? locations.legacyPiExtension : locations.piExtension
+        try FileManager.default.createDirectory(
+            at: foreignExtension.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("foreign content".utf8).write(to: foreignExtension)
 
-    do {
-        _ = try HookInstaller.install(at: locations)
-        throw TestFailure.assertion("Foreign Pi extension was overwritten")
-    } catch is InstallerError {
-        let content = try String(contentsOf: locations.piExtension, encoding: .utf8)
-        try require(content == "foreign content", "Foreign Pi extension changed")
-        try require(!FileManager.default.fileExists(atPath: locations.installedReporter.path), "Reporter installed before Pi preflight")
-        try require(!FileManager.default.fileExists(atPath: locations.codexConfiguration.path), "Codex config changed before Pi preflight")
-        try require(!FileManager.default.fileExists(atPath: locations.claudeConfiguration.path), "Claude config changed before Pi preflight")
+        do {
+            _ = try HookInstaller.install(at: locations)
+            throw TestFailure.assertion("Foreign Pi extension was overwritten")
+        } catch is InstallerError {
+            let content = try String(contentsOf: foreignExtension, encoding: .utf8)
+            try require(content == "foreign content", "Foreign Pi extension changed")
+            try require(!FileManager.default.fileExists(atPath: locations.installedReporter.path), "Reporter installed before Pi preflight")
+            try require(!FileManager.default.fileExists(atPath: locations.codexConfiguration.path), "Codex config changed before Pi preflight")
+            try require(!FileManager.default.fileExists(atPath: locations.claudeConfiguration.path), "Claude config changed before Pi preflight")
+        }
     }
 }
 
@@ -773,6 +941,7 @@ let tests: [(String, () throws -> Void)] = [
     ("session feed", testSessionFeed),
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),
+    ("installation analytics", testInstallationAnalytics),
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
     ("terminal application ownership", testApplicationOwnership),

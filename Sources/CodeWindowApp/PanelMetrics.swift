@@ -21,8 +21,6 @@ enum PanelMetrics {
 
     static let statusColumn: CGFloat = 10
     static let statusDot: CGFloat = 5
-    static let attentionRailWidth: CGFloat = 2
-    static let attentionRailHeight: CGFloat = rowHeight - 14
 
     static let separatorHeight: CGFloat = 0.5
     static let separatorInset: CGFloat = rowInsetHorizontal + glyphSize + glyphGap

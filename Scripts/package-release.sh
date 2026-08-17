@@ -121,20 +121,26 @@ fi
 
 "$repo_dir/Scripts/build-app.sh" --universal
 
-for executable in \
-    "$app_dir/Contents/MacOS/CodeWindow" \
-    "$app_dir/Contents/Helpers/codewindow-report" \
-    "$app_dir/Contents/Helpers/codewindow-install" \
-    "$app_dir/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" \
-    "$app_dir/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"; do
+mach_o_count=0
+while IFS= read -r -d '' executable; do
+    description=$(/usr/bin/file -b "$executable")
+    if [[ "$description" != Mach-O* ]]; then
+        continue
+    fi
+    (( mach_o_count += 1 ))
     architectures=$(/usr/bin/lipo -archs "$executable")
     if [[ "$architectures" != *arm64* || "$architectures" != *x86_64* ]]; then
-        print -u2 -- "Missing architecture in $executable: $architectures"
+        print -u2 -- "Bundled executable is not universal: $executable ($architectures)"
         exit 1
     fi
-done
+done < <(/usr/bin/find "$app_dir" -type f -print0)
+if (( mach_o_count == 0 )); then
+    print -u2 -- "No Mach-O executables were found in $app_dir"
+    exit 1
+fi
 
 "$app_dir/Contents/MacOS/CodeWindow" --smoke-test
+"$repo_dir/Scripts/test-agent-integrations.sh" "$app_dir"
 
 if [[ -n "$notary_profile" ]]; then
     notary_dir=$(/usr/bin/mktemp -d /tmp/codewindow-notary.XXXXXX)

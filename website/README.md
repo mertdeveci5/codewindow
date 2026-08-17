@@ -33,6 +33,10 @@ and INP), plus explicit, privacy-safe engagement events: `site_engaged`, `sectio
 `scroll_depth_reached`, `external_link_clicked`, and `download_clicked`. Copy `.env.example` to
 `.env.production.local` and set the public project token before building or deploying. Download
 events include the button location, release version, platform, architecture, and destination URL.
+Use `download_clicked` for download starts and unique downloaders. The macOS installer sends a
+separate anonymous `installation_completed` event once after successful hook setup, so PostHog can
+also report completed installations by release version. These two events intentionally use
+unrelated anonymous IDs and should be compared as aggregate counts, not a per-person funnel.
 Generic autocapture and session recording are disabled. Browser checks can use the
 `analytics_test` query parameter; those events are marked as validation traffic and excluded from
 the dashboard insights.

@@ -206,12 +206,31 @@ public enum ProcessInspector {
         }
     }
 
-    private static func agentKind(executablePath: String) -> AgentKind? {
-        switch URL(fileURLWithPath: executablePath).lastPathComponent.lowercased() {
-        case "codex": .codex
-        case "claude": .claude
-        case "pi": .pi
-        default: nil
+    static func agentKind(executablePath: String) -> AgentKind? {
+        let executable = URL(fileURLWithPath: executablePath).standardizedFileURL
+        return switch executable.lastPathComponent.lowercased() {
+        case "codex": AgentKind.codex
+        case "claude": AgentKind.claude
+        case "pi": AgentKind.pi
+        default: isVersionedClaudeExecutable(executable) ? AgentKind.claude : nil
+        }
+    }
+
+    /// Claude's native installer exposes `~/.local/bin/claude` as a symlink, but
+    /// `proc_pidpath` resolves it to `~/.local/share/claude/versions/<version>`.
+    /// Match that stable directory shape without treating arbitrary version-named
+    /// executables as Claude processes.
+    private static func isVersionedClaudeExecutable(_ executable: URL) -> Bool {
+        let components = executable.pathComponents.map { $0.lowercased() }
+        guard components.count >= 3,
+              components[components.count - 3] == "claude",
+              components[components.count - 2] == "versions"
+        else { return false }
+
+        let version = components.last?.split(separator: "-", maxSplits: 1).first ?? ""
+        let numbers = version.split(separator: ".", omittingEmptySubsequences: false)
+        return numbers.count >= 2 && numbers.allSatisfy {
+            !$0.isEmpty && $0.allSatisfy(\.isNumber)
         }
     }
 }

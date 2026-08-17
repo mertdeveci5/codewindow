@@ -272,6 +272,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return await self.installHooks()
             },
+            uninstallHooks: { [weak self] in
+                guard let self else {
+                    return PanelNotice(message: "removal failed · use the Terminal command", succeeded: false)
+                }
+                return await self.uninstallHooks()
+            },
             checkHooks: { [weak self] in
                 await self?.hooksAreInstalled() ?? false
             },
@@ -403,6 +409,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.runInstaller(at: helper, command: "status")
         }.value
         return result.terminationStatus == 0
+    }
+
+    private func uninstallHooks() async -> PanelNotice {
+        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.runInstaller(at: helper, command: "uninstall")
+        }.value
+        guard result.terminationStatus == 0 else {
+            return PanelNotice(message: Self.installerFailureMessage(result.output), succeeded: false)
+        }
+        return PanelNotice(message: "agent hooks and local state removed", succeeded: true)
     }
 
     nonisolated private static func runInstaller(at helper: URL, command: String) -> InstallerCommandResult {

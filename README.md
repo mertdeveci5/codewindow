@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.13-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.14-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -68,7 +68,11 @@ Every update archive and update feed is signed with a CodeWindow EdDSA key. Spar
 
 ## Remove CodeWindow
 
-Quit CodeWindow, then run this before deleting the app:
+Right-click the panel and choose **Remove agent hooks and quit…**. This removes CodeWindow's
+Codex and Claude hooks, Pi extension, reporter, analytics installation identifier, and local state
+while preserving every unrelated agent setting. Then move `CodeWindow.app` to the Trash.
+
+You can perform the same cleanup from Terminal before deleting the app:
 
 ```sh
 "/Applications/CodeWindow.app/Contents/Helpers/codewindow-install" uninstall
@@ -91,6 +95,14 @@ A state file contains:
 The preview can contain part of a task, command, or selected tool argument. CodeWindow only considers a small list of useful fields such as paths, queries, URLs, and tool targets. It removes full file paths, strips URL credentials and query strings, and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
 
 CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
+
+The website sends an anonymous `download_clicked` event to PostHog when a download link is used.
+After agent hooks are successfully installed, the installer sends one anonymous
+`installation_completed` event per installed lifetime. It contains only a random installation ID,
+app version, platform, and CPU architecture; it explicitly does not create a PostHog person
+profile. The ID is stored inside CodeWindow's support directory and removed by uninstall. Like any
+HTTPS request, PostHog receives standard network metadata such as the user's IP address. No command,
+prompt, project, session, or agent activity is included.
 
 The update check sends a normal HTTPS request to GitHub containing the app version and standard network metadata such as the user's IP address. If you accept an update, Sparkle downloads the app archive from GitHub. No session or agent activity is included.
 
@@ -127,7 +139,7 @@ Maintainers can also create the signed Sparkle feed using the private key stored
 SPARKLE_KEY_ACCOUNT=dev.codewindow.app ./Scripts/package-release.sh
 ```
 
-Pushing a matching version tag runs the release workflow. It tests the app, imports the Developer ID certificate into a temporary keychain, builds a universal app with hardened runtime and secure timestamps, notarizes and staples it, creates a signed update ZIP and a drag-to-Applications disk image, notarizes the disk image, checks the mounted app with Gatekeeper, signs `appcast.xml`, and publishes the files to GitHub Releases. The workflow stops before publishing if any check fails.
+Pushing a matching version tag runs the release workflow. It tests the app, imports the Developer ID certificate into a temporary keychain, builds a universal app with hardened runtime and secure timestamps, notarizes and staples it, creates a signed update ZIP and a drag-to-Applications disk image, notarizes the disk image, checks the mounted app with Gatekeeper, signs `appcast.xml`, and publishes the files to GitHub Releases. The workflow stops before publishing if any check fails. Set the `CODEWINDOW_POSTHOG_KEY` GitHub Actions secret to the same public PostHog project token used by the website; `CODEWINDOW_POSTHOG_HOST` is an optional repository variable.
 
 Add these GitHub Actions secrets before creating a release tag:
 
@@ -136,6 +148,7 @@ Add these GitHub Actions secrets before creating a release tag:
 - `APPLE_ID`: the Apple Account used for notarization
 - `APPLE_TEAM_ID`: the ten-character Developer Program team ID
 - `APPLE_APP_SPECIFIC_PASSWORD`: an app-specific password for the Apple Account
+- `CODEWINDOW_POSTHOG_KEY`: the same public PostHog project token used by the website
 - `SPARKLE_PRIVATE_KEY`: the existing CodeWindow update signing key
 
 To copy a `.p12` file as base64 on macOS, run:

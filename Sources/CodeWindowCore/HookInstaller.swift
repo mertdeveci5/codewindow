@@ -79,6 +79,10 @@ public struct InstallLocations: Sendable {
     }
 
     public var piExtension: URL {
+        home.appendingPathComponent(".pi/agent/extensions/codewindow.js")
+    }
+
+    public var legacyPiExtension: URL {
         home.appendingPathComponent(".pi/agent/extensions/codewindow.ts")
     }
 }
@@ -108,6 +112,7 @@ public enum HookInstaller {
         }
         try preflightConfiguration(at: locations.claudeConfiguration, events: claudeEvents)
         try preflightPiExtension(at: locations.piExtension)
+        try preflightPiExtension(at: locations.legacyPiExtension)
 
         return try withRollback(at: installationTargets(locations)) {
             try installPrepared(at: locations)
@@ -141,7 +146,7 @@ public enum HookInstaller {
             changed.append(locations.claudeConfiguration)
         }
 
-        if try installPiExtension(at: locations) { changed.append(locations.piExtension) }
+        changed.append(contentsOf: try installPiExtension(at: locations))
         return InstallationResult(changed: changed)
     }
 
@@ -181,8 +186,10 @@ public enum HookInstaller {
             changed.append(locations.claudeConfiguration)
         }
 
-        if try removeOwnedFile(at: locations.piExtension, containing: piMarker) {
-            changed.append(locations.piExtension)
+        for extensionURL in [locations.piExtension, locations.legacyPiExtension] {
+            if try removeOwnedFile(at: extensionURL, containing: piMarker) {
+                changed.append(extensionURL)
+            }
         }
         if try removeOwnedReporter(at: locations.installedReporter) {
             changed.append(locations.installedReporter)
@@ -207,6 +214,7 @@ public enum HookInstaller {
             locations.installedReporter,
             locations.claudeConfiguration,
             locations.piExtension,
+            locations.legacyPiExtension,
         ]
         for configuration in locations.codexConfigurations {
             targets.append(contentsOf: legacyBackups(for: configuration))
@@ -373,15 +381,21 @@ public enum HookInstaller {
         try atomicWrite(data, to: url, permissions: filePermissions(at: url) ?? 0o600)
     }
 
-    private static func installPiExtension(at locations: InstallLocations) throws -> Bool {
+    private static func installPiExtension(at locations: InstallLocations) throws -> [URL] {
         let content = try piExtension(reporterPath: locations.installedReporter.path)
-        if (try? String(contentsOf: locations.piExtension, encoding: .utf8)) == content { return false }
-        try FileManager.default.createDirectory(
-            at: locations.piExtension.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try atomicWrite(Data(content.utf8), to: locations.piExtension, permissions: 0o600)
-        return true
+        var changed: [URL] = []
+        if (try? String(contentsOf: locations.piExtension, encoding: .utf8)) != content {
+            try FileManager.default.createDirectory(
+                at: locations.piExtension.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try atomicWrite(Data(content.utf8), to: locations.piExtension, permissions: 0o600)
+            changed.append(locations.piExtension)
+        }
+        if try removeOwnedFile(at: locations.legacyPiExtension, containing: piMarker) {
+            changed.append(locations.legacyPiExtension)
+        }
+        return changed
     }
 
     private static func preflightConfiguration(at url: URL, events: [String]) throws {
@@ -412,93 +426,86 @@ public enum HookInstaller {
         guard let encodedPath = String(data: encodedPathData, encoding: .utf8) else {
             throw InstallerError.invalidReporterPath
         }
-        return """
-        \(piMarker)
-        import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+        return #"""
+        \#(piMarker)
         import { spawn } from "node:child_process";
 
-        const reporter = \(encodedPath);
+        const reporter = \#(encodedPath);
+        const activeTools = new Map();
 
-        type ReportDetails = {
-          toolName?: string;
-          toolInput?: unknown;
-          userPrompt?: string;
-          assistantMessage?: string;
-          toolFailed?: boolean;
-        };
-
-        function report(
-          event: string,
-          ctx: ExtensionContext,
-          details: ReportDetails = {},
-        ): Promise<void> {
-          return new Promise((resolve) => {
-            const child = spawn(reporter, ["--agent", "pi", "--pid", String(process.pid)], {
+        function report(event, ctx, details = {}) {
+          let child;
+          try {
+            child = spawn(reporter, ["--agent", "pi", "--pid", String(process.pid)], {
               stdio: ["pipe", "ignore", "ignore"],
             });
-            let settled = false;
-            const finish = () => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              resolve();
-            };
-            const timer = setTimeout(() => {
-              child.kill();
-              finish();
-            }, 250);
-            child.once("error", finish);
-            child.once("close", finish);
-            child.stdin.once("error", finish);
-            child.stdin.end(JSON.stringify({
-              session_id: ctx.sessionManager.getSessionId(),
-              event,
-              cwd: ctx.cwd,
-              tool_name: details.toolName,
-              tool_input: details.toolInput,
-              user_prompt: details.userPrompt,
-              last_assistant_message: details.assistantMessage,
-              is_error: details.toolFailed,
-            }));
-          });
+          } catch {
+            return;
+          }
+
+          const timer = setTimeout(() => child.kill(), 1000);
+          timer.unref();
+          const finish = () => clearTimeout(timer);
+          child.once("error", finish);
+          child.once("close", finish);
+          child.stdin?.once("error", () => {});
+          child.stdin?.end(JSON.stringify({
+            session_id: ctx.sessionManager.getSessionId(),
+            event,
+            cwd: ctx.cwd,
+            tool_name: details.toolName,
+            tool_input: details.toolInput,
+            tool_call_id: details.toolCallId,
+            user_prompt: details.userPrompt,
+            last_assistant_message: details.assistantMessage,
+            is_error: details.toolFailed,
+          }));
         }
 
-        function visibleAssistantText(message: unknown): string | undefined {
+        function visibleAssistantText(message) {
           if (!message || typeof message !== "object") return undefined;
-          const candidate = message as { role?: unknown; content?: unknown };
-          if (candidate.role !== "assistant" || !Array.isArray(candidate.content)) return undefined;
+          if (message.role !== "assistant" || !Array.isArray(message.content)) return undefined;
 
-          const text = candidate.content
-            .filter((part): part is { type: "text"; text: string } => {
-              if (!part || typeof part !== "object") return false;
-              const content = part as { type?: unknown; text?: unknown };
-              return content.type === "text" && typeof content.text === "string";
-            })
+          const text = message.content
+            .filter((part) => part?.type === "text" && typeof part.text === "string")
             .map((part) => part.text)
             .join("\n")
             .trim();
           return text || undefined;
         }
 
-        export default function (pi: ExtensionAPI) {
+        export default function (pi) {
           pi.on("session_start", (_event, ctx) => report("session_start", ctx));
           pi.on("before_agent_start", (event, ctx) => report("before_agent_start", ctx, {
             userPrompt: event.prompt,
           }));
-          pi.on("tool_execution_start", (event, ctx) => report("tool_execution_start", ctx, {
-            toolName: event.toolName,
-            toolInput: event.args,
-          }));
-          pi.on("tool_execution_end", (event, ctx) => report("tool_execution_end", ctx, {
-            toolName: event.toolName,
-            toolFailed: event.isError,
-          }));
+          pi.on("tool_execution_start", (event, ctx) => {
+            activeTools.set(event.toolCallId, {
+              toolName: event.toolName,
+              toolInput: event.args,
+            });
+            report("tool_execution_start", ctx, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              toolInput: event.args,
+            });
+          });
+          pi.on("tool_execution_end", (event, ctx) => {
+            const started = activeTools.get(event.toolCallId);
+            activeTools.delete(event.toolCallId);
+            report("tool_execution_end", ctx, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              toolInput: started?.toolInput,
+              toolFailed: event.isError,
+            });
+          });
           pi.on("message_end", (event, ctx) => report("message_end", ctx, {
             assistantMessage: visibleAssistantText(event.message),
           }));
           pi.on("session_shutdown", (_event, ctx) => report("session_shutdown", ctx));
         }
-        """
+        """#
     }
 
     private static func atomicWrite(_ data: Data, to destination: URL, permissions: Int) throws {
@@ -600,7 +607,7 @@ public enum InstallerError: Error, CustomStringConvertible {
         case .reporterMissing: "The reporter executable is missing. Reinstall CodeWindow and try again."
         case let .invalidConfiguration(url): "Invalid JSON configuration: \(url.path)"
         case let .unsupportedHookStructure(url): "Unsupported hooks structure in \(url.path); no changes were made."
-        case .piExtensionAlreadyExists: "A non-CodeWindow Pi extension already exists at codewindow.ts."
+        case .piExtensionAlreadyExists: "A non-CodeWindow Pi extension already exists at the CodeWindow extension path."
         case .invalidReporterPath: "The reporter path could not be encoded."
         case let .renameFailed(code): "Atomic file replacement failed with errno \(code)."
         case let .rollbackFailed(original, rollback): "Installation failed (\(original)) and rollback failed (\(rollback))."

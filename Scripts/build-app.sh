@@ -60,6 +60,24 @@ fi
     "$app_dir/Contents/Resources/AgentLogos" \
     "$app_dir/Contents/Resources/ThirdPartyLicenses"
 /bin/cp "$repo_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
+
+posthog_key=${CODEWINDOW_POSTHOG_KEY:-}
+posthog_host=${CODEWINDOW_POSTHOG_HOST:-}
+posthog_env_file="$repo_dir/website/.env.production.local"
+if [[ -f "$posthog_env_file" ]]; then
+    if [[ -z "$posthog_key" ]]; then
+        posthog_key=$(/usr/bin/sed -n 's/^VITE_POSTHOG_KEY=//p' "$posthog_env_file" | /usr/bin/tail -n 1)
+    fi
+    if [[ -z "$posthog_host" ]]; then
+        posthog_host=$(/usr/bin/sed -n 's/^VITE_POSTHOG_HOST=//p' "$posthog_env_file" | /usr/bin/tail -n 1)
+    fi
+fi
+if [[ -n "$posthog_key" && "$posthog_key" != "phc_your_project_token" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :CodeWindowPostHogKey string $posthog_key" "$app_dir/Contents/Info.plist"
+fi
+posthog_host=${posthog_host:-https://us.i.posthog.com}
+/usr/libexec/PlistBuddy -c "Add :CodeWindowPostHogHost string $posthog_host" "$app_dir/Contents/Info.plist"
+
 /bin/cp "$repo_dir/Resources/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
 /bin/cp "$repo_dir/LICENSE" "$app_dir/Contents/Resources/LICENSE.txt"
 /bin/cp "$sparkle_license" "$app_dir/Contents/Resources/ThirdPartyLicenses/Sparkle.txt"

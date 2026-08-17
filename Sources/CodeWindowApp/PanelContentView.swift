@@ -16,6 +16,7 @@ struct PanelContentView: View {
     @ObservedObject var updateReminder: UpdateReminder
     let reportHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
+    let uninstallHooks: () async -> PanelNotice
     let checkHooks: () async -> Bool
     let checkForUpdates: () -> Void
     let hidePanel: () -> Void
@@ -26,6 +27,8 @@ struct PanelContentView: View {
     @AppStorage("hookSetupPromptDismissed") private var hookSetupPromptDismissed = false
     @State private var hooksInstalled: Bool?
     @State private var isInstallingHooks = false
+    @State private var isUninstallingHooks = false
+    @State private var confirmsUninstall = false
     @State private var notice: PanelNotice?
 
     var body: some View {
@@ -55,10 +58,22 @@ struct PanelContentView: View {
                 Button("Install or update agent hooks…") {
                     Task { await installAgentHooks() }
                 }
+                Button("Remove agent hooks and quit…", role: .destructive) {
+                    confirmsUninstall = true
+                }
+                .disabled(isInstallingHooks || isUninstallingHooks)
                 Button("Check for Updates…", action: checkForUpdates)
                 Divider()
                 Button("Hide CodeWindow", action: hidePanel)
                 Button("Quit CodeWindow") { NSApplication.shared.terminate(nil) }
+            }
+            .alert("Remove CodeWindow agent hooks?", isPresented: $confirmsUninstall) {
+                Button("Cancel", role: .cancel) {}
+                Button("Remove and Quit", role: .destructive) {
+                    Task { await uninstallAgentHooks() }
+                }
+            } message: {
+                Text("This removes CodeWindow's Codex and Claude hooks, Pi extension, reporter, and local state. Other agent settings stay unchanged.")
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("CodeWindow, agent activity")
@@ -125,6 +140,18 @@ struct PanelContentView: View {
         show(result)
     }
 
+    private func uninstallAgentHooks() async {
+        guard !isInstallingHooks, !isUninstallingHooks else { return }
+        isUninstallingHooks = true
+        let result = await uninstallHooks()
+        isUninstallingHooks = false
+        guard result.succeeded else {
+            show(result)
+            return
+        }
+        NSApplication.shared.terminate(nil)
+    }
+
     private func select(_ session: PresentedSession) {
         if !activateTerminal(session) {
             show(PanelNotice(message: "terminal is no longer available", succeeded: false))
@@ -169,15 +196,6 @@ private struct SessionRow: View {
             if session.needsAttention {
                 RoundedRectangle(cornerRadius: PanelMetrics.rowRadius, style: .continuous)
                     .fill(PanelPalette.attention.opacity(0.16))
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(PanelPalette.attention)
-                            .frame(
-                                width: PanelMetrics.attentionRailWidth,
-                                height: PanelMetrics.attentionRailHeight
-                            )
-                            .padding(.leading, 2)
-                    }
             }
         }
         .overlay(alignment: .top) {
