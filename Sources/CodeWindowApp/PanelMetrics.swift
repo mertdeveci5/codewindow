@@ -28,5 +28,9 @@ enum PanelMetrics {
     /// Height used before SwiftUI reports its first measurement.
     static let initialHeight: CGFloat = rowHeight + bezel * 2
 
+    /// Sessions past this height scroll instead of growing the panel, so a machine
+    /// running many agents never gets an island that covers the whole screen.
+    static let maximumListHeight: CGFloat = rowHeight * 8
+
     static let screenMargin: CGFloat = 18
 }

@@ -2,11 +2,49 @@ import CryptoKit
 import Foundation
 
 public struct HookPayload: Sendable {
+    /// Codex and Claude report the Claude hook names, Pi reports its own. Every alias lives
+    /// here once, so the presentation, the feed, and the previews all read the same model
+    /// instead of each re-matching raw event strings.
+    private enum HookEvent {
+        case sessionStarted
+        case promptSubmitted
+        case toolStarted
+        case toolFinished
+        case toolFailed
+        case permissionRequested
+        case turnEnded
+        case sessionEnded
+
+        init?(name: String, notificationType: String?) {
+            switch HookPayload.normalized(name) {
+            case "sessionstart":
+                self = .sessionStarted
+            case "userpromptsubmit", "beforeagentstart", "agentstart":
+                self = .promptSubmitted
+            case "pretooluse", "toolcall", "toolexecutionstart":
+                self = .toolStarted
+            case "posttooluse", "toolresult", "toolexecutionend":
+                self = .toolFinished
+            case "posttoolusefailure":
+                self = .toolFailed
+            case "permissionrequest":
+                self = .permissionRequested
+            case "notification"
+                where HookPayload.normalized(notificationType ?? "").contains("permission"):
+                self = .permissionRequested
+            case "messageend", "stop", "agentsettled":
+                self = .turnEnded
+            case "sessionend", "sessionshutdown":
+                self = .sessionEnded
+            default:
+                return nil
+            }
+        }
+    }
+
     public let externalSessionID: String
-    public let eventName: String
     public let cwd: String
     public let toolName: String?
-    public let notificationType: String?
     private let toolOperationKey: String?
     private let submittedText: String?
     private let commandText: String?
@@ -15,6 +53,8 @@ public struct HookPayload: Sendable {
     private let toolSubjectText: String?
     private let assistantText: String?
     private let toolFailed: Bool
+    private let hasToolInput: Bool
+    private let event: HookEvent?
 
     public init(json: [String: Any]) throws {
         guard let sessionID = Self.string(in: json, keys: ["session_id", "sessionId"]),
@@ -26,11 +66,14 @@ public struct HookPayload: Sendable {
         }
 
         self.externalSessionID = sessionID
-        self.eventName = eventName
         self.cwd = Self.string(in: json, keys: ["cwd"]) ?? FileManager.default.currentDirectoryPath
         let toolName = Self.string(in: json, keys: ["tool_name", "toolName"])
         self.toolName = toolName
-        self.notificationType = Self.string(in: json, keys: ["notification_type", "notificationType"])
+        let event = HookEvent(
+            name: eventName,
+            notificationType: Self.string(in: json, keys: ["notification_type", "notificationType"])
+        )
+        self.event = event
         self.toolOperationKey = Self.operationKey(
             sessionID: sessionID,
             toolCallID: Self.string(
@@ -44,9 +87,12 @@ public struct HookPayload: Sendable {
             in: json,
             keys: ["last_assistant_message", "lastAssistantMessage", "assistant_message", "assistantMessage"]
         )
-        self.toolFailed = Self.boolean(in: json, keys: ["is_error", "isError"]) ?? false
+        // A dedicated failure event and an is_error flag mean the same thing to every reader.
+        self.toolFailed = (Self.boolean(in: json, keys: ["is_error", "isError"]) ?? false)
+            || event == .toolFailed
 
         let toolInputValue = Self.value(in: json, keys: ["tool_input", "toolInput", "args", "input"])
+        self.hasToolInput = toolInputValue != nil
         let toolInput = toolInputValue as? [String: Any] ?? [:]
         let rawToolInput = toolInputValue as? String
         let isCommandTool = Self.isCommandTool(toolName)
@@ -67,18 +113,19 @@ public struct HookPayload: Sendable {
     public func state(
         agent: AgentKind,
         process: ProcessStamp,
-        previousTaskPreview: String? = nil,
+        previous: SessionState? = nil,
         now: Date = Date()
     ) -> SessionState? {
         guard let presentation = presentation else { return nil }
-        let actionPreview = actionPreview(for: presentation.action)
+        let actionPreview = continuedActionPreview(from: previous)
+            ?? actionPreview(for: presentation.action)
         return SessionState(
             sessionKey: SessionState.key(agent: agent, externalSessionID: externalSessionID),
             agent: agent,
             activity: presentation.activity,
             projectLabel: SessionState.projectLabel(cwd: cwd),
             action: presentation.action,
-            taskPreview: taskPreview ?? previousTaskPreview,
+            taskPreview: taskPreview ?? previous?.taskPreview,
             actionPreview: actionPreview,
             feedEvent: feedEvent(
                 action: presentation.action,
@@ -90,26 +137,27 @@ public struct HookPayload: Sendable {
     }
 
     private var presentation: (activity: Activity, action: SafeAction)? {
-        switch Self.normalized(eventName) {
-        case "sessionstart":
+        switch event {
+        case .sessionStarted:
             return (.starting, .waiting)
-        case "userpromptsubmit", "beforeagentstart", "agentstart":
+        case .promptSubmitted:
             return (.working, .thinking)
-        case "pretooluse", "toolcall", "toolexecutionstart":
+        case .toolStarted:
             return (.working, Self.safeAction(for: toolName, hasQuery: queryText != nil))
-        case "posttooluse", "toolresult", "toolexecutionend":
-            return toolFailed ? (.needsAttention, .failed) : (.working, .thinking)
-        case "permissionrequest":
+        case .toolFinished, .toolFailed:
+            // A finished tool stays on the row. Handing the row back to thinking drops the
+            // subject, and the panel then falls back to the task prompt from the start of
+            // the turn instead of the work the agent just did.
+            guard !toolFailed else { return (.needsAttention, .failed) }
+            guard let toolName, !toolName.isEmpty else { return (.working, .thinking) }
+            return (.working, Self.safeAction(for: toolName, hasQuery: queryText != nil))
+        case .permissionRequested:
             return (.needsAttention, .awaitingPermission)
-        case "notification" where Self.normalized(notificationType ?? "").contains("permission"):
-            return (.needsAttention, .awaitingPermission)
-        case "posttoolusefailure":
-            return (.needsAttention, .failed)
-        case "messageend", "stop", "agentsettled":
+        case .turnEnded:
             return (.idle, .waiting)
-        case "sessionend", "sessionshutdown":
+        case .sessionEnded:
             return (.ended, .waiting)
-        default:
+        case nil:
             return nil
         }
     }
@@ -118,50 +166,44 @@ public struct HookPayload: Sendable {
         action: SafeAction,
         actionPreview: String?
     ) -> SessionFeedEvent? {
-        switch Self.normalized(eventName) {
-        case "userpromptsubmit", "beforeagentstart":
+        switch event {
+        case .promptSubmitted:
             guard let text = Self.messagePreview(submittedText) else { return nil }
             return SessionFeedEvent(kind: .user, text: text)
-        case "pretooluse", "toolcall", "toolexecutionstart":
+        case .toolStarted:
             return SessionFeedEvent(
                 kind: .toolCall,
                 text: action.label,
                 detail: actionPreview,
                 operationKey: toolOperationKey
             )
-        case "posttooluse", "toolresult", "toolexecutionend":
+        case .toolFinished, .toolFailed:
             return SessionFeedEvent(
                 kind: .toolResult,
                 text: Self.toolLabel(toolName) ?? "tool",
                 succeeded: !toolFailed,
                 operationKey: toolOperationKey
             )
-        case "posttoolusefailure":
-            return SessionFeedEvent(
-                kind: .toolResult,
-                text: Self.toolLabel(toolName) ?? "tool",
-                succeeded: false,
-                operationKey: toolOperationKey
-            )
-        case "permissionrequest":
+        case .permissionRequested:
             return SessionFeedEvent(kind: .attention, text: action.label)
-        case "notification" where Self.normalized(notificationType ?? "").contains("permission"):
-            return SessionFeedEvent(kind: .attention, text: action.label)
-        case "messageend", "stop", "agentsettled":
+        case .turnEnded:
             guard let text = Self.messagePreview(assistantText) else { return nil }
             return SessionFeedEvent(kind: .assistant, text: text)
-        default:
+        case .sessionStarted, .sessionEnded, nil:
             return nil
         }
     }
 
     private var taskPreview: String? {
-        switch Self.normalized(eventName) {
-        case "userpromptsubmit", "beforeagentstart":
-            return Self.preview(submittedText)
-        default:
-            return nil
-        }
+        guard event == .promptSubmitted else { return nil }
+        return Self.preview(submittedText)
+    }
+
+    /// Agents that report a completion without repeating the tool input keep the subject the
+    /// row already shows, so a finished tool never regresses to a bare tool name.
+    private func continuedActionPreview(from previous: SessionState?) -> String? {
+        guard event == .toolFinished, !toolFailed, !hasToolInput else { return nil }
+        return previous?.actionPreview
     }
 
     private func actionPreview(for action: SafeAction) -> String? {

@@ -19,14 +19,41 @@ extension NSPanel {
 /// full-screen apps. The panel itself never takes key or main status. A session
 /// row can still explicitly return focus to the terminal that owns that session.
 final class FloatingPanel: NSPanel {
+    private enum ScrollGesture {
+        case movesPanel
+        case scrollsList
+    }
+
     private var cursorRevealWorkItem: DispatchWorkItem?
     private var isCursorCaptured = false
+    private var scrollGesture: ScrollGesture?
+
+    /// Height of the session list that can scroll, measured up from the bottom bezel.
+    /// Zero while every row fits, so the whole panel stays a trackpad drag surface.
+    var scrollableListHeight: CGFloat = 0
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
         guard event.type == .scrollWheel, event.hasPreciseScrollingDeltas else {
+            super.sendEvent(event)
+            return
+        }
+
+        // A gesture keeps whatever it started as. Trackpads open with a zero-delta event,
+        // so the decision waits for the first movement and momentum inherits it.
+        if event.phase.contains(.began) {
+            scrollGesture = nil
+        }
+        if scrollGesture == nil, event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
+            scrollGesture = scrollsList(
+                at: event.locationInWindow,
+                deltaX: event.scrollingDeltaX,
+                deltaY: event.scrollingDeltaY
+            ) ? .scrollsList : .movesPanel
+        }
+        guard scrollGesture == .movesPanel else {
             super.sendEvent(event)
             return
         }
@@ -56,6 +83,14 @@ final class FloatingPanel: NSPanel {
         {
             releaseCursor()
         }
+    }
+
+    /// A vertical gesture over an overflowing list belongs to that list. Horizontal gestures,
+    /// and anything above the list, keep dragging the panel around the screen.
+    func scrollsList(at locationInWindow: NSPoint, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
+        guard scrollableListHeight > 0, abs(deltaY) > abs(deltaX) else { return false }
+        let listRange = PanelMetrics.bezel...(PanelMetrics.bezel + scrollableListHeight)
+        return listRange.contains(locationInWindow.y)
     }
 
     @discardableResult

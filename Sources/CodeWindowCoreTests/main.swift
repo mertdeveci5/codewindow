@@ -143,13 +143,14 @@ func testHookPayloads() throws {
         ("SessionStart", nil, .starting, .waiting),
         ("UserPromptSubmit", nil, .working, .thinking),
         ("PreToolUse", "Bash", .working, .runningCommand),
-        ("PostToolUse", "Bash", .working, .thinking),
+        ("PostToolUse", "Bash", .working, .runningCommand),
+        ("PostToolUse", nil, .working, .thinking),
         ("PermissionRequest", nil, .needsAttention, .awaitingPermission),
         ("PostToolUseFailure", "Edit", .needsAttention, .failed),
         ("Stop", nil, .idle, .waiting),
         ("SessionEnd", nil, .ended, .waiting),
         ("tool_execution_start", "read", .working, .readingFile),
-        ("tool_execution_end", "read", .working, .thinking),
+        ("tool_execution_end", "read", .working, .readingFile),
         ("message_end", nil, .idle, .waiting),
     ]
 
@@ -203,7 +204,7 @@ func testHookPayloads() throws {
             "tool_name": "Bash",
             "tool_use_id": "tool-123",
             "tool_input": ["command": "OPENAI_API_KEY=sk-example-secret-value swift test\n--filter PreviewTests"],
-        ]).state(agent: .claude, process: process, previousTaskPreview: taskState.taskPreview),
+        ]).state(agent: .claude, process: process, previous: taskState),
         "Command preview state missing"
     )
     try require(commandState.taskPreview == taskState.taskPreview, "Task preview was not carried forward")
@@ -220,7 +221,7 @@ func testHookPayloads() throws {
             "cwd": "/tmp/codewindow",
             "tool_name": "Bash",
             "tool_use_id": "tool-123",
-        ]).state(agent: .claude, process: process),
+        ]).state(agent: .claude, process: process, previous: commandState),
         "Tool result state missing"
     )
     try require(completedState.feedEvent?.kind == .toolResult, "Tool result was not added to the feed")
@@ -228,6 +229,28 @@ func testHookPayloads() throws {
     try require(
         completedState.feedEvent?.operationKey == commandState.feedEvent?.operationKey,
         "Matching tool lifecycle events did not receive the same opaque key"
+    )
+    try require(completedState.action == .runningCommand, "Finished tool handed the row back to thinking")
+    try require(
+        completedState.actionPreview == commandState.actionPreview,
+        "Finished tool dropped the subject the row was already showing"
+    )
+
+    let repeatedInputState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "PostToolUse",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "Edit",
+            "tool_use_id": "tool-124",
+            "tool_input": ["file_path": "/Users/person/project/PanelContentView.swift"],
+        ]).state(agent: .claude, process: process),
+        "Repeated tool input state missing"
+    )
+    try require(repeatedInputState.action == .editingFile, "Finished edit lost its action")
+    try require(
+        repeatedInputState.actionPreview == "PanelContentView.swift",
+        "Finished edit lost its subject"
     )
 
     let failedState = try unwrap(
@@ -425,7 +448,15 @@ func testStateFiles() throws {
         ]).state(
             agent: .codex,
             process: process,
-            previousTaskPreview: String(repeating: "t", count: 96)
+            previous: SessionState(
+                sessionKey: "bounded-feed",
+                agent: .codex,
+                activity: .working,
+                projectLabel: "codewindow",
+                action: .thinking,
+                taskPreview: String(repeating: "t", count: 96),
+                process: process
+            )
         ),
         "Bounded feed state missing"
     )

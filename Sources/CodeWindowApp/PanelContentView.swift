@@ -15,6 +15,7 @@ struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     @ObservedObject var updateReminder: UpdateReminder
     let reportHeight: (CGFloat) -> Void
+    let reportScrollableListHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
     let uninstallHooks: () async -> PanelNotice
     let checkHooks: () async -> Bool
@@ -48,6 +49,8 @@ struct PanelContentView: View {
                 }
             }
             .onPreferenceChange(PanelHeightKey.self, perform: reportHeight)
+            .onAppear { reportScrollableListHeight(scrollableListHeight) }
+            .onChange(of: scrollableListHeight, perform: reportScrollableListHeight)
             .task {
                 let installed = await checkHooks()
                 if hooksInstalled == nil {
@@ -105,27 +108,53 @@ struct PanelContentView: View {
                 AvailableUpdateRow(version: availableVersion, showUpdate: checkForUpdates)
                     .transition(.opacity)
             }
-            if store.sessions.isEmpty {
-                EmptyRow()
-                    .transition(.opacity)
-            } else {
-                ForEach(Array(store.sessions.enumerated()), id: \.element.id) { index, session in
-                    SessionRow(
-                        session: session,
-                        showsDivider: index > 0,
-                        reduceMotion: reduceMotion,
-                        hooksInstalled: hooksInstalled,
-                        select: { select(session) },
-                        hoverChanged: { hoverSession(session, $0) }
-                    )
-                    .transition(rowTransition)
-                }
-            }
+            sessionList
         }
         .animation(motion, value: store.sessions.map(\.id))
         .animation(motion, value: hooksInstalled)
         .animation(motion, value: updateReminder.availableVersion)
         .animation(motion, value: notice)
+    }
+
+    /// The list scrolls once it outgrows `maximumListHeight`. Without this the rows past
+    /// the panel edge are clipped by the window and no gesture can ever reach them.
+    @ViewBuilder
+    private var sessionList: some View {
+        if store.sessions.isEmpty {
+            EmptyRow()
+                .transition(.opacity)
+        } else {
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(Array(store.sessions.enumerated()), id: \.element.id) { index, session in
+                        SessionRow(
+                            session: session,
+                            showsDivider: index > 0,
+                            reduceMotion: reduceMotion,
+                            hooksInstalled: hooksInstalled,
+                            select: { select(session) },
+                            hoverChanged: { hoverSession(session, $0) }
+                        )
+                        .transition(rowTransition)
+                    }
+                }
+            }
+            .frame(height: listHeight)
+        }
+    }
+
+    private var listContentHeight: CGFloat {
+        CGFloat(store.sessions.count) * PanelMetrics.rowHeight
+    }
+
+    private var listHeight: CGFloat {
+        min(listContentHeight, PanelMetrics.maximumListHeight)
+    }
+
+    /// Height of the scrollable band, measured up from the panel's bottom bezel. Zero while
+    /// every session fits, which keeps trackpad gestures moving the panel as they always have.
+    private var scrollableListHeight: CGFloat {
+        listContentHeight > PanelMetrics.maximumListHeight ? listHeight : 0
     }
 
     private func installAgentHooks() async {

@@ -35,7 +35,7 @@ func report() throws {
           let state = payload.state(
               agent: agent,
               process: process,
-              previousTaskPreview: previous?.taskPreview
+              previous: previous
           )
     else { return }
 

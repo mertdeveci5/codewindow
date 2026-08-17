@@ -109,6 +109,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && diagnosticFixture.metadataLabel(hooksInstalled: true) == "restart needed"
                     && diagnosticFixture.accessibilityDescription(hooksInstalled: true)
                         .contains("trust hooks if prompted")
+                let workingFixture = PresentedSession.reported(SessionState(
+                    sessionKey: "smoke-preview",
+                    agent: .claude,
+                    activity: .working,
+                    projectLabel: "codewindow",
+                    action: .runningCommand,
+                    taskPreview: "lets go",
+                    actionPreview: "swift build",
+                    process: ProcessStamp(pid: 1, startedAtSeconds: 1, startedAtMicroseconds: 0)
+                ))
+                let livePreviewWorks = workingFixture.primaryLabel == "swift build"
                 let visibleReminder = UpdateReminder(isPanelManuallyHidden: { false })
                 let hiddenReminder = UpdateReminder(isPanelManuallyHidden: { true })
                 let updateRoutingWorks =
@@ -129,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let originalOrigin = panel.frame.origin
                 let trackpadMovement = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
                 let trackpadMoveWorks = trackpadMovement == NSPoint(x: -8, y: 0)
+                let listScrollingWorks = smokeTestListScrolling(of: panel)
                 let movedOrigin = panel.frame.origin
                 panel.constrainToVisibleArea()
                 let validPositionWasPreserved = panel.frame.origin == movedOrigin
@@ -151,9 +163,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && hasSparkleFramework
                     && hasSparkleConfiguration
                     && diagnosticGuidanceWorks
+                    && livePreviewWorks
                     && updateRoutingWorks
                     && trackpadMoveWorks
                     && momentumMoveWorks
+                    && listScrollingWorks
                     && validPositionWasPreserved
                     && offscreenPositionWasConstrained
                     && inspectorWorks
@@ -167,8 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
                         + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
                         + "hookGuidance=\(diagnosticGuidanceWorks) "
+                        + "livePreview=\(livePreviewWorks) "
                         + "updateRouting=\(updateRoutingWorks) "
                         + "trackpad=\(trackpadMoveWorks) momentum=\(momentumMoveWorks) "
+                        + "listScrolling=\(listScrollingWorks) "
                         + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
                         + "inspector=\(inspectorWorks) transition=\(inspectorTransitionWorks) "
                         + "sessions=\(store.sessions.count) detected=\(detected)"
@@ -202,6 +218,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fputs("CodeWindow: \(error)\n", stderr)
             NSApplication.shared.terminate(nil)
         }
+    }
+
+    /// An overflowing list owns vertical gestures inside it. Everything else still moves the panel.
+    private func smokeTestListScrolling(of panel: FloatingPanel) -> Bool {
+        let reportedHeight = panel.scrollableListHeight
+        defer { panel.scrollableListHeight = reportedHeight }
+
+        panel.scrollableListHeight = PanelMetrics.maximumListHeight
+        let insideList = NSPoint(x: 100, y: PanelMetrics.bezel + 1)
+        let aboveList = NSPoint(x: 100, y: PanelMetrics.bezel + PanelMetrics.maximumListHeight + 1)
+        let overflowingListScrolls = panel.scrollsList(at: insideList, deltaX: 0, deltaY: -6)
+            && !panel.scrollsList(at: insideList, deltaX: -6, deltaY: 0)
+            && !panel.scrollsList(at: aboveList, deltaX: 0, deltaY: -6)
+
+        panel.scrollableListHeight = 0
+        let shortListMovesPanel = !panel.scrollsList(at: insideList, deltaX: 0, deltaY: -6)
+        return overflowingListScrolls && shortListMovesPanel
     }
 
     private func smokeTestMomentumMovement(
@@ -265,6 +298,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reportHeight: { [weak self, weak panel] height in
                 guard let self, let panel else { return }
                 self.resize(panel: panel, to: height)
+            },
+            reportScrollableListHeight: { [weak panel] height in
+                panel?.scrollableListHeight = height
             },
             installHooks: { [weak self] in
                 guard let self else {
