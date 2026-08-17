@@ -54,6 +54,57 @@ CODEWINDOW_STATE_DIR="$state_directory" \
     "$pi_extension" \
     "$state_directory"
 
+# Drive the installed hook command exactly as the agent does, and read back the row the
+# panel would show. A finished tool has to keep its own subject: falling back to thinking
+# leaves the row on the task prompt from the start of the turn.
+hook_command() {
+    /usr/bin/python3 -c '
+import json, sys
+configuration, event = sys.argv[1], sys.argv[2]
+hooks = json.load(open(configuration))["hooks"][event]
+print(hooks[0]["hooks"][0]["command"])
+' "$1" "$2"
+}
+
+report_state() {
+    /usr/bin/python3 -c '
+import glob, json, sys
+files = sorted(glob.glob(sys.argv[1] + "/*.json"))
+state = json.load(open(files[0]))
+print(state["action"], state.get("actionPreview"), sep="\t")
+' "$1"
+}
+
+for agent in claude codex; do
+    if [[ "$agent" == "claude" ]]; then
+        configuration="$home/.claude/settings.json"
+    else
+        configuration="$home/.codex/hooks.json"
+    fi
+    agent_state="$temporary_root/state-$agent"
+    /bin/mkdir -p "$agent_state"
+    prompt_hook=$(hook_command "$configuration" UserPromptSubmit)
+    pre_hook=$(hook_command "$configuration" PreToolUse)
+    post_hook=$(hook_command "$configuration" PostToolUse)
+
+    # The hook normally runs inside a live agent process, which is how the reporter stamps the
+    # session. Pin this shell's pid so the check does not depend on which agents are running.
+    print -r -- '{"session_id":"lifecycle","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"lets go"}' \
+        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$prompt_hook --pid $$"
+    print -r -- '{"session_id":"lifecycle","hook_event_name":"PreToolUse","cwd":"/tmp/codewindow","tool_name":"Bash","tool_use_id":"lifecycle-1","tool_input":{"command":"swift build"}}' \
+        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$pre_hook --pid $$"
+    # Codex reports completion without repeating the tool input, so the row has to carry it.
+    print -r -- '{"session_id":"lifecycle","hook_event_name":"PostToolUse","cwd":"/tmp/codewindow","tool_name":"Bash","tool_use_id":"lifecycle-1"}' \
+        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$post_hook --pid $$"
+
+    finished_row=$(report_state "$agent_state")
+    if [[ "$finished_row" != $'runningCommand\tswift build' ]]; then
+        print -u2 -- "$agent row after a finished tool: $finished_row"
+        exit 1
+    fi
+done
+print -- "PASS installed Claude and Codex hook lifecycle"
+
 CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" uninstall --home "$home" >/dev/null
 if CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" status --home "$home" >/dev/null 2>&1; then
     print -u2 -- "Uninstalled integrations still report as installed"
