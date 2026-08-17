@@ -8,6 +8,9 @@ import Foundation
 final class SessionStore: ObservableObject {
     @Published private(set) var sessions: [PresentedSession] = []
     @Published private(set) var feeds: [String: [SessionFeedEvent]] = [:]
+    /// Set when a hook could not record activity. The panel says so once and clears it, because
+    /// the alternative is a panel that quietly stops moving with no way to tell why.
+    @Published private(set) var reportingFailure: String?
 
     private let directory: URL
     private var directorySource: DispatchSourceFileSystemObject?
@@ -111,21 +114,26 @@ final class SessionStore: ObservableObject {
         // event that has slid out of the file can never be offered again.
         var nextDeliveredEventIDs: [String: Set<UUID>] = [:]
         for entry in StateFiles.all(in: directory) {
-            guard entry.state.activity != .ended, ProcessInspector.isCurrent(entry.state.process) else {
-                try? FileManager.default.removeItem(at: entry.url)
+            guard let state = entry.state,
+                  state.activity != .ended,
+                  ProcessInspector.isCurrent(state.process)
+            else {
+                discard(entry.url)
                 continue
             }
-            hooked.append(entry.state)
-            let delivered = deliveredEventIDs[entry.state.id] ?? []
-            for event in entry.state.feedEvents where !delivered.contains(event.id) {
-                nextFeeds[entry.state.id] = SessionFeed.appending(
-                    event,
-                    to: nextFeeds[entry.state.id] ?? []
-                )
+            hooked.append(state)
+            let delivered = deliveredEventIDs[state.id] ?? []
+            for event in state.feedEvents where !delivered.contains(event.id) {
+                nextFeeds[state.id] = SessionFeed.appending(event, to: nextFeeds[state.id] ?? [])
             }
-            nextDeliveredEventIDs[entry.state.id] = Set(entry.state.feedEvents.map(\.id))
+            nextDeliveredEventIDs[state.id] = Set(state.feedEvents.map(\.id))
         }
         deliveredEventIDs = nextDeliveredEventIDs
+
+        let failure = StateFiles.reportingFailure(in: directory)
+        if reportingFailure != failure {
+            reportingFailure = failure
+        }
 
         let hookedProcesses = Set(hooked.map(\.process))
         let diagnostics = discoveredProcesses?.map(PresentedSession.detected)
@@ -152,6 +160,18 @@ final class SessionStore: ObservableObject {
         if !wasEmpty && sessions.isEmpty {
             scheduleDiscovery()
         }
+    }
+
+    func acknowledgeReportingFailure() {
+        StateFiles.clearReportingFailure(in: directory)
+        reportingFailure = nil
+    }
+
+    /// A session file and the lock its hooks coordinate through belong together.
+    private func discard(_ file: URL) {
+        try? FileManager.default.removeItem(at: file)
+        let key = file.deletingPathExtension().lastPathComponent
+        try? FileManager.default.removeItem(at: StateFiles.lockFile(for: key, in: directory))
     }
 
     private func reconcileProcessSources() {

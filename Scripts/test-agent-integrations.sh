@@ -148,6 +148,69 @@ if [[ ! -x "$installed_reporter" ]]; then
 fi
 print -- "PASS reporter refresh after an app update"
 
+# A release that adds a hook event leaves the user's config short of one. Refresh has to repair
+# that too, otherwise the panel asks somebody who already installed to install again.
+/usr/bin/python3 -c '
+import json, sys
+path = sys.argv[1]
+config = json.load(open(path))
+del config["hooks"]["Notification"]
+json.dump(config, open(path, "w"), indent=2)
+' "$home/.claude/settings.json"
+CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" refresh --home "$home" >/dev/null
+if ! /usr/bin/python3 -c '
+import json, sys
+sys.exit(0 if "Notification" in json.load(open(sys.argv[1]))["hooks"] else 1)
+' "$home/.claude/settings.json"; then
+    print -u2 -- "Refresh did not restore a hook event this build expects"
+    exit 1
+fi
+CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" status --home "$home" >/dev/null
+print -- "PASS refresh repairs a missing hook event"
+
+# A parallel tool turn starts several hooks for one session at once. Each has to land.
+parallel_state="$temporary_root/state-parallel"
+/bin/mkdir -p "$parallel_state"
+reporter="$home/Library/Application Support/CodeWindow/bin/codewindow-report"
+for index in 1 2 3 4 5 6; do
+    print -r -- "{\"session_id\":\"parallel\",\"hook_event_name\":\"PreToolUse\",\"cwd\":\"/tmp/codewindow\",\"tool_name\":\"Bash\",\"tool_use_id\":\"p$index\",\"tool_input\":{\"command\":\"job-$index\"}}" \
+        | CODEWINDOW_STATE_DIR="$parallel_state" "$reporter" --agent claude --pid $$ &
+done
+wait
+landed=$(/usr/bin/python3 -c '
+import glob, json, sys
+state = json.load(open(sorted(glob.glob(sys.argv[1] + "/*.json"))[0]))
+print(len({event.get("detail") for event in state["feedEvents"] if event.get("detail")}))
+' "$parallel_state")
+if [[ "$landed" != "6" ]]; then
+    print -u2 -- "Six concurrent hooks landed only $landed events"
+    exit 1
+fi
+print -- "PASS concurrent hooks for one session"
+
+# A reporter that cannot write has to say so instead of exiting clean and going quiet.
+failure_state="$temporary_root/state-failure"
+/bin/mkdir -p "$failure_state"
+print -r -- '{"session_id":"failing","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"hello"}' \
+    | CODEWINDOW_STATE_DIR="$failure_state" "$reporter" --agent claude --pid $$
+session_file=$(/bin/ls "$failure_state" | /usr/bin/grep '\.json$' | /usr/bin/head -n 1)
+/bin/rm "$failure_state/$session_file"
+/bin/mkdir "$failure_state/$session_file"   # the destination can no longer be replaced
+set +e
+print -r -- '{"session_id":"failing","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"hello"}' \
+    | CODEWINDOW_STATE_DIR="$failure_state" "$reporter" --agent claude --pid $$ 2>/dev/null
+report_status=$?
+set -e
+if (( report_status == 0 )); then
+    print -u2 -- "A reporter that could not write still exited clean"
+    exit 1
+fi
+if [[ ! -s "$failure_state/.reporting-failure" ]]; then
+    print -u2 -- "A failed report left nothing for the panel to show"
+    exit 1
+fi
+print -- "PASS reporting failures are recorded, not swallowed"
+
 CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" uninstall --home "$home" >/dev/null
 if CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" status --home "$home" >/dev/null 2>&1; then
     print -u2 -- "Uninstalled integrations still report as installed"

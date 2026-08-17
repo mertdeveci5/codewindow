@@ -40,7 +40,7 @@ public enum SessionFeed {
     /// A state file holds a short run of recent events, not just the newest one. The app learns
     /// about writes through a directory notification that coalesces, so two events landing
     /// between reads would otherwise leave the older one unseen forever.
-    public static let maximumPersistedEvents = 4
+    public static let maximumPersistedEvents = 12
 
     public static func persisted(
         _ events: [SessionFeedEvent],

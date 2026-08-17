@@ -39,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     updaterDelegate: nil,
                     userDriverDelegate: updateReminder
                 )
-                Task { await refreshInstalledHooks() }
             }
 
             if let smokeDirectory,
@@ -155,48 +154,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 panel.setFrameOrigin(originalOrigin)
                 let momentumMoveWorks = smokeTestMomentumMovement(of: panel, from: originalOrigin)
-                let passed = panel.level == .floating
-                    && behavior.contains(.canJoinAllSpaces)
-                    && behavior.contains(.fullScreenAuxiliary)
-                    && panel.styleMask.contains(.nonactivatingPanel)
-                    && panel.frame.width == PanelMetrics.width
-                    && AgentLogoAssets.allAvailable
-                    && hasAppIcon
-                    && hasSparkleFramework
-                    && hasSparkleConfiguration
-                    && diagnosticGuidanceWorks
-                    && livePreviewWorks
-                    && updateRoutingWorks
-                    && trackpadMoveWorks
-                    && momentumMoveWorks
-                    && listScrollingWorks
-                    && validPositionWasPreserved
-                    && offscreenPositionWasConstrained
-                    && inspectorWorks
-                    && inspectorTransitionWorks
+                // Named checks rather than one conjunction: a failing run has to say which
+                // check failed, or the next person reads `false` and starts guessing.
+                let checks: [(name: String, passed: Bool)] = [
+                    ("floating", panel.level == .floating),
+                    ("allSpaces", behavior.contains(.canJoinAllSpaces)),
+                    ("fullscreen", behavior.contains(.fullScreenAuxiliary)),
+                    ("nonactivating", panel.styleMask.contains(.nonactivatingPanel)),
+                    ("width", panel.frame.width == PanelMetrics.width),
+                    ("logos", AgentLogoAssets.allAvailable),
+                    ("icon", hasAppIcon),
+                    ("sparkle", hasSparkleFramework && hasSparkleConfiguration),
+                    ("hookGuidance", diagnosticGuidanceWorks),
+                    ("livePreview", livePreviewWorks),
+                    ("updateRouting", updateRoutingWorks),
+                    ("trackpad", trackpadMoveWorks),
+                    ("momentum", momentumMoveWorks),
+                    ("listScrolling", listScrollingWorks),
+                    ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
+                    ("inspector", inspectorWorks),
+                    ("transition", inspectorTransitionWorks),
+                ]
+                let failures = checks.filter { !$0.passed }.map(\.name)
                 print(
-                    "floating=\(panel.level == .floating) "
-                        + "allSpaces=\(behavior.contains(.canJoinAllSpaces)) "
-                        + "fullscreen=\(behavior.contains(.fullScreenAuxiliary)) "
-                        + "nonactivating=\(panel.styleMask.contains(.nonactivatingPanel)) "
-                        + "width=\(Int(panel.frame.width)) "
-                        + "logos=\(AgentLogoAssets.allAvailable) icon=\(hasAppIcon) "
-                        + "sparkle=\(hasSparkleFramework && hasSparkleConfiguration) "
-                        + "hookGuidance=\(diagnosticGuidanceWorks) "
-                        + "livePreview=\(livePreviewWorks) "
-                        + "updateRouting=\(updateRoutingWorks) "
-                        + "trackpad=\(trackpadMoveWorks) momentum=\(momentumMoveWorks) "
-                        + "listScrolling=\(listScrollingWorks) "
-                        + "screenBounds=\(validPositionWasPreserved && offscreenPositionWasConstrained) "
-                        + "inspector=\(inspectorWorks) transition=\(inspectorTransitionWorks) "
-                        + "sessions=\(store.sessions.count) detected=\(detected)"
+                    checks.map { "\($0.name)=\($0.passed)" }.joined(separator: " ")
+                        + " sessions=\(store.sessions.count) detected=\(detected)"
                 )
+                if !failures.isEmpty {
+                    fputs("smoke test failed: \(failures.joined(separator: ", "))\n", stderr)
+                }
                 inspector?.dismissImmediately()
                 panel.orderOut(nil)
                 if let smokeDirectory {
                     try? FileManager.default.removeItem(at: smokeDirectory)
                 }
-                exit(passed ? EXIT_SUCCESS : EXIT_FAILURE)
+                exit(failures.isEmpty ? EXIT_SUCCESS : EXIT_FAILURE)
             }
 
             sessionsCancellable = store.$sessions.sink { [weak self] sessions in
@@ -317,7 +309,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return await self.uninstallHooks()
             },
             checkHooks: { [weak self] in
-                await self?.hooksAreInstalled() ?? false
+                guard let self else { return false }
+                // Repair before reporting: a build that adds a hook event would otherwise show
+                // the setup prompt for the moment between the check and the refresh.
+                await self.refreshInstalledHooks()
+                return await self.hooksAreInstalled()
             },
             checkForUpdates: { [weak self] in
                 self?.updaterController?.checkForUpdates(nil)

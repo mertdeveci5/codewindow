@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.17-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.18-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -94,7 +94,7 @@ A state file contains:
 
 The preview can contain part of a task, command, or selected tool argument. CodeWindow only considers a small list of useful fields such as paths, queries, URLs, and tool targets. It removes full file paths, strips URL credentials and query strings, and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
 
-CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 1 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
+CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 8 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
 
 The website sends an anonymous `download_clicked` event to PostHog when a download link is used.
 After agent hooks are successfully installed, the installer sends one anonymous

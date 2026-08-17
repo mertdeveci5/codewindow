@@ -551,6 +551,46 @@ func testStateFiles() throws {
         "A full run did not survive the round trip"
     )
 
+    // A file the app can no longer decode has to stay visible, or nothing is able to remove it.
+    let garbage = directory.appendingPathComponent("garbage.json")
+    try Data("{ not a state file }".utf8).write(to: garbage)
+    let listed = StateFiles.all(in: directory)
+    try require(
+        listed.contains { $0.url.lastPathComponent == "garbage.json" && $0.state == nil },
+        "An undecodable state file was hidden from the app"
+    )
+    try require(
+        listed.contains { $0.url.lastPathComponent != "garbage.json" && $0.state != nil },
+        "Readable state files stopped being reported"
+    )
+    try FileManager.default.removeItem(at: garbage)
+
+    // Hooks for one session run concurrently, so they take a lock around read-modify-write.
+    let locked = try StateFiles.withSessionLock("lock-check", in: directory) { "held" }
+    try require(locked == "held", "Session lock did not return its result")
+    try require(
+        FileManager.default.fileExists(
+            atPath: StateFiles.lockFile(for: "lock-check", in: directory).path
+        ),
+        "Session lock file was not created"
+    )
+    try require(
+        StateFiles.all(in: directory).allSatisfy { $0.url.pathExtension == "json" },
+        "Lock files leaked into the state listing"
+    )
+
+    StateFiles.clearReportingFailure(in: directory)
+    try require(StateFiles.reportingFailure(in: directory) == nil, "Cleared failure still reads back")
+    try Data("could not replace session state (errno 21)\n".utf8).write(
+        to: directory.appendingPathComponent(".reporting-failure")
+    )
+    try require(
+        StateFiles.reportingFailure(in: directory) == "could not replace session state (errno 21)",
+        "Reporting failure did not round trip"
+    )
+    StateFiles.clearReportingFailure(in: directory)
+    try require(StateFiles.reportingFailure(in: directory) == nil, "Reporting failure was not cleared")
+
     let emojiTaskState = try unwrap(
         HookPayload(json: [
             "session_id": "emoji-feed",

@@ -117,11 +117,13 @@ do {
             recordInstallationIfNeeded(executable: executable, locations: locations)
         }
     case "refresh":
-        // Runs on every app launch. Only integrations that are already installed get rewritten,
-        // so this never resurrects hooks somebody removed by hand.
-        if !HookInstaller.isInstalled(at: locations) {
+        // Runs on every app launch. The installed reporter is the marker that somebody opted in
+        // — install writes it, uninstall removes it — so this repairs an integration that has
+        // fallen behind, including one missing an event this build added, and stays silent for
+        // anyone who has uninstalled.
+        if !FileManager.default.isExecutableFile(atPath: locations.installedReporter.path) {
             print("CodeWindow hooks are not installed.")
-        } else if HookInstaller.isUpToDate(at: locations) {
+        } else if HookInstaller.isInstalled(at: locations), HookInstaller.isUpToDate(at: locations) {
             print("CodeWindow hooks are up to date.")
         } else {
             let result = try HookInstaller.install(at: locations)

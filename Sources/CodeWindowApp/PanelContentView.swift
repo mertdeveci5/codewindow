@@ -51,6 +51,8 @@ struct PanelContentView: View {
             .onPreferenceChange(PanelHeightKey.self, perform: reportHeight)
             .onAppear { reportScrollableListHeight(scrollableListHeight) }
             .onChange(of: scrollableListHeight, perform: reportScrollableListHeight)
+            .onAppear { showReportingFailure(store.reportingFailure) }
+            .onChange(of: store.reportingFailure, perform: showReportingFailure)
             .task {
                 let installed = await checkHooks()
                 if hooksInstalled == nil {
@@ -185,6 +187,12 @@ struct PanelContentView: View {
         if !activateTerminal(session) {
             show(PanelNotice(message: "terminal is no longer available", succeeded: false))
         }
+    }
+
+    private func showReportingFailure(_ reason: String?) {
+        guard let reason else { return }
+        show(PanelNotice(message: "activity not recorded · \(reason)", succeeded: false))
+        store.acknowledgeReportingFailure()
     }
 
     private func show(_ notice: PanelNotice) {

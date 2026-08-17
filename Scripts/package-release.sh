@@ -111,6 +111,15 @@ submit_notarization() {
     return 0
 }
 
+# The version lives in the app, the README, and the site. A release that ships one of them
+# stale advertises a download that does not exist.
+for versioned_file in README.md website/index.html website/src/lib/site.ts; do
+    if ! /usr/bin/grep -q "$version" "$repo_dir/$versioned_file"; then
+        print -u2 -- "$versioned_file does not mention version $version"
+        exit 1
+    fi
+done
+
 if /usr/bin/git -C "$repo_dir" diff --quiet \
     && /usr/bin/git -C "$repo_dir" diff --cached --quiet \
     && current_tag=$(/usr/bin/git -C "$repo_dir" describe --tags --exact-match 2>/dev/null) \
