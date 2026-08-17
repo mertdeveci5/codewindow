@@ -117,8 +117,7 @@ public struct HookPayload: Sendable {
         now: Date = Date()
     ) -> SessionState? {
         guard let presentation = presentation else { return nil }
-        let actionPreview = continuedActionPreview(from: previous)
-            ?? actionPreview(for: presentation.action)
+        let actionPreview = actionPreview(for: presentation.action, previous: previous)
         return SessionState(
             sessionKey: SessionState.key(agent: agent, externalSessionID: externalSessionID),
             agent: agent,
@@ -199,14 +198,22 @@ public struct HookPayload: Sendable {
         return Self.preview(submittedText)
     }
 
-    /// Agents that report a completion without repeating the tool input keep the subject the
-    /// row already shows, so a finished tool never regresses to a bare tool name.
-    private func continuedActionPreview(from previous: SessionState?) -> String? {
-        guard event == .toolFinished, !toolFailed, !hasToolInput else { return nil }
-        return previous?.actionPreview
+    /// The row shows the newest thing that happened. Most events carry their own subject; a
+    /// finished tool or a finished turn that arrives without one keeps the subject the row
+    /// already showed. Nothing here may fall back to the task preview, or the prompt that
+    /// opened the turn lands back on the row long after the agent moved past it.
+    private func actionPreview(for action: SafeAction, previous: SessionState?) -> String? {
+        switch event {
+        case .turnEnded:
+            return Self.preview(assistantText) ?? previous?.actionPreview
+        case .toolFinished where !toolFailed && !hasToolInput:
+            return previous?.actionPreview ?? subject(for: action)
+        default:
+            return subject(for: action)
+        }
     }
 
-    private func actionPreview(for action: SafeAction) -> String? {
+    private func subject(for action: SafeAction) -> String? {
         switch action {
         case .runningCommand:
             return Self.preview(commandText ?? toolSubjectText)

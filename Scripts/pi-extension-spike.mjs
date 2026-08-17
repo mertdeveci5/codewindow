@@ -104,6 +104,8 @@ assert.equal(toolEnd.action, "runningCommand");
 assert.equal(toolEnd.actionPreview, "printf codewindow-pi-spike");
 assert.equal(assistant.feedEvent.kind, "assistant");
 assert.equal(assistant.feedEvent.text, "visible spike answer");
+// The closing message is the newest thing that happened, so it owns the row.
+assert.equal(assistant.actionPreview, "visible spike answer");
 assert(!JSON.stringify(assistant).includes("hidden-spike-reasoning"));
 assert.equal(shutdown.activity, "ended");
 

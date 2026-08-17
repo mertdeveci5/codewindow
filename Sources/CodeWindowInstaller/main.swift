@@ -102,7 +102,7 @@ let locations = InstallLocations.detectingCodexProfiles(
     reporterSource: reporter,
     environment: environment
 )
-let commands = Set(["install", "uninstall", "status"])
+let commands = Set(["install", "refresh", "uninstall", "status"])
 let command = CommandLine.arguments.dropFirst().first { commands.contains($0) } ?? "status"
 
 do {
@@ -116,6 +116,17 @@ do {
         if overriddenHome == nil {
             recordInstallationIfNeeded(executable: executable, locations: locations)
         }
+    case "refresh":
+        // Runs on every app launch. Only integrations that are already installed get rewritten,
+        // so this never resurrects hooks somebody removed by hand.
+        if !HookInstaller.isInstalled(at: locations) {
+            print("CodeWindow hooks are not installed.")
+        } else if HookInstaller.isUpToDate(at: locations) {
+            print("CodeWindow hooks are up to date.")
+        } else {
+            let result = try HookInstaller.install(at: locations)
+            print(result.changed.isEmpty ? "CodeWindow hooks are up to date." : "Refreshed CodeWindow hooks.")
+        }
     case "uninstall":
         let result = try HookInstaller.uninstall(at: locations)
         print(result.changed.isEmpty ? "CodeWindow hooks were not installed." : "Uninstalled CodeWindow hooks.")
@@ -124,7 +135,7 @@ do {
         print(installed ? "installed" : "not installed")
         if !installed { exit(1) }
     default:
-        print("Usage: codewindow-install [install|uninstall|status] [--reporter-path PATH] [--home PATH]")
+        print("Usage: codewindow-install [install|refresh|uninstall|status] [--reporter-path PATH] [--home PATH]")
         exit(2)
     }
 } catch {

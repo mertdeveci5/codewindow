@@ -253,6 +253,38 @@ func testHookPayloads() throws {
         "Finished edit lost its subject"
     )
 
+    // A finished turn keeps the newest thing that happened on the row. Claude's Stop payload
+    // carries no message, and falling back to the task preview would put the prompt that
+    // opened the turn back on the row long after the agent moved past it.
+    let settledState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "Stop",
+            "cwd": "/tmp/codewindow",
+        ]).state(agent: .claude, process: process, previous: completedState),
+        "Settled state missing"
+    )
+    try require(settledState.action == .waiting, "Finished turn is not waiting")
+    try require(
+        settledState.actionPreview == completedState.actionPreview,
+        "Finished turn dropped the work and fell back to the prompt"
+    )
+    try require(settledState.taskPreview == taskState.taskPreview, "Finished turn lost the task preview")
+
+    let settledWithMessageState = try unwrap(
+        HookPayload(json: [
+            "session_id": "preview-session",
+            "hook_event_name": "Stop",
+            "cwd": "/tmp/codewindow",
+            "last_assistant_message": "Reviewed the panel and pushed the fix",
+        ]).state(agent: .claude, process: process, previous: completedState),
+        "Settled state with a message missing"
+    )
+    try require(
+        settledWithMessageState.actionPreview == "Reviewed the panel and pushed the fix",
+        "A closing message should win over the previous subject"
+    )
+
     let failedState = try unwrap(
         HookPayload(json: [
             "session_id": "preview-session",
@@ -751,6 +783,23 @@ func testHookInstaller() throws {
 
     let second = try HookInstaller.install(at: locations)
     try require(second.changed.isEmpty, "Second install was not idempotent")
+
+    // An app update replaces the bundled reporter, not the copy the agents execute.
+    try require(HookInstaller.isUpToDate(at: locations), "Fresh install reports itself out of date")
+    try Data("newer reporter".utf8).write(to: reporter)
+    try require(!HookInstaller.isUpToDate(at: locations), "A superseded reporter reports itself current")
+    let refreshed = try HookInstaller.install(at: locations)
+    try require(refreshed.changed == [locations.installedReporter], "Refresh did not rewrite the reporter")
+    try require(HookInstaller.isUpToDate(at: locations), "Refresh left the reporter behind")
+    try require(
+        (try? Data(contentsOf: locations.installedReporter)) == Data("newer reporter".utf8),
+        "Installed reporter still holds the superseded build"
+    )
+
+    try Data("\(HookInstaller.piMarker)\nsuperseded extension\n".utf8).write(to: locations.piExtension)
+    try require(!HookInstaller.isUpToDate(at: locations), "A superseded Pi extension reports itself current")
+    _ = try HookInstaller.install(at: locations)
+    try require(HookInstaller.isUpToDate(at: locations), "Refresh left the Pi extension behind")
     _ = try HookInstaller.uninstall(at: locations)
     try require(!HookInstaller.isInstalled(at: locations), "Uninstall status is true")
     let finalCodex = try readJSON(locations.codexConfiguration)

@@ -270,6 +270,19 @@ public enum HookInstaller {
             && ((try? String(contentsOf: locations.piExtension, encoding: .utf8).contains(piMarker)) == true)
     }
 
+    /// True when the copies the agents actually execute match what this build ships. Agents run
+    /// the reporter and the Pi extension out of the user's home, not out of the app bundle, so
+    /// replacing the bundle leaves both behind until an install rewrites them.
+    public static func isUpToDate(at locations: InstallLocations) -> Bool {
+        guard let source = try? Data(contentsOf: locations.reporterSource),
+              let installed = try? Data(contentsOf: locations.installedReporter),
+              source == installed,
+              let extensionSource = try? piExtension(reporterPath: locations.installedReporter.path),
+              (try? String(contentsOf: locations.piExtension, encoding: .utf8)) == extensionSource
+        else { return false }
+        return true
+    }
+
     private static func installReporter(at locations: InstallLocations) throws -> Bool {
         let sourceData = try Data(contentsOf: locations.reporterSource)
         if let installedData = try? Data(contentsOf: locations.installedReporter), installedData == sourceData {

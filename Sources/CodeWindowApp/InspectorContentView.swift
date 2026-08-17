@@ -142,11 +142,12 @@ private struct FeedEventRow: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let detail = event.detail {
+                    // The inspector is where the whole command belongs. Clipping it here leaves
+                    // the text nowhere to be read, since the panel row is a single line.
                     Text(detail)
                         .font(detailFont)
                         .foregroundStyle(PanelPalette.meta)
-                        .lineLimit(3)
-                        .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

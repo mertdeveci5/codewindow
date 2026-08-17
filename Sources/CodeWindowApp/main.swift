@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     updaterDelegate: nil,
                     userDriverDelegate: updateReminder
                 )
+                Task { await refreshInstalledHooks() }
             }
 
             if let smokeDirectory,
@@ -428,8 +429,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return application.activate(options: [.activateIgnoringOtherApps])
     }
 
+    nonisolated private static let installerHelper = Bundle.main.bundleURL
+        .appendingPathComponent("Contents/Helpers/codewindow-install")
+
+    /// Agents execute a copy of the reporter from the user's home, so replacing the app bundle
+    /// leaves that copy behind and a reporter fix never reaches them. Rewrite it whenever this
+    /// build differs. Best effort: a failure leaves the previous copy in place and working.
+    private func refreshInstalledHooks() async {
+        let result = await Task.detached(priority: .utility) {
+            Self.runInstaller(at: Self.installerHelper, command: "refresh")
+        }.value
+        if result.terminationStatus != 0 {
+            fputs("CodeWindow: could not refresh agent hooks · \(result.output)\n", stderr)
+        }
+    }
+
     private func installHooks() async -> PanelNotice {
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
+        let helper = Self.installerHelper
         let result = await Task.detached(priority: .userInitiated) {
             Self.runInstaller(at: helper, command: "install")
         }.value
@@ -440,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hooksAreInstalled() async -> Bool {
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
+        let helper = Self.installerHelper
         let result = await Task.detached(priority: .utility) {
             Self.runInstaller(at: helper, command: "status")
         }.value
@@ -448,7 +464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func uninstallHooks() async -> PanelNotice {
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/codewindow-install")
+        let helper = Self.installerHelper
         let result = await Task.detached(priority: .userInitiated) {
             Self.runInstaller(at: helper, command: "uninstall")
         }.value

@@ -1,10 +1,13 @@
 import SwiftUI
 
+/// Status rows grow with their text. Clipping a setup step or a failure reason to one line
+/// hides the very thing the row exists to say.
 private struct PanelStatusRow: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, PanelMetrics.rowInsetHorizontal)
-            .frame(height: PanelMetrics.rowHeight)
+            .padding(.vertical, PanelMetrics.rowInsetVertical)
+            .frame(minHeight: PanelMetrics.rowHeight)
             .overlay(alignment: .bottom) {
                 PanelPalette.divider
                     .frame(height: PanelMetrics.separatorHeight)
@@ -39,6 +42,7 @@ struct HookSetupRow: View {
                 Text("Install hooks for live updates")
                     .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                     .foregroundStyle(PanelPalette.meta)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 4)
@@ -82,7 +86,7 @@ struct NoticeRow: View {
             Text(notice.message)
                 .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                 .foregroundStyle(PanelPalette.title)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 6)
         }
@@ -109,6 +113,7 @@ struct HookRestartRow: View {
                 Text(subtitle)
                     .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                     .foregroundStyle(PanelPalette.meta)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 4)
@@ -143,6 +148,7 @@ struct AvailableUpdateRow: View {
                     Text("Review and install the update")
                         .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                         .foregroundStyle(PanelPalette.meta)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 4)

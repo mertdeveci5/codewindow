@@ -7,6 +7,7 @@ enum PanelMetrics {
     static let bezel: CGFloat = 5
     static let rowRadius: CGFloat = outerRadius - bezel
     static let rowInsetHorizontal: CGFloat = 9
+    static let rowInsetVertical: CGFloat = 6
     static let rowHeight: CGFloat = 40
     static let inspectorHeight: CGFloat = 320
     static let inspectorGap: CGFloat = 8

@@ -102,14 +102,42 @@ for agent in claude codex; do
         print -u2 -- "$agent row after a finished tool: $finished_row"
         exit 1
     fi
+
+    # Claude and Codex end a turn without a closing message, so the row has to hold the work
+    # rather than fall back to the prompt that opened the turn.
+    print -r -- '{"session_id":"lifecycle","hook_event_name":"Stop","cwd":"/tmp/codewindow"}' \
+        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$(hook_command "$configuration" Stop) --pid $$"
+    settled_row=$(report_state "$agent_state")
+    if [[ "$settled_row" != $'waiting\tswift build' ]]; then
+        print -u2 -- "$agent row after a finished turn: $settled_row"
+        exit 1
+    fi
 done
 print -- "PASS installed Claude and Codex hook lifecycle"
+
+# An app update replaces the bundled reporter but not the copy the agents execute, so every
+# launch refreshes it. Leave a superseded copy behind and let refresh repair it.
+installed_reporter="$home/Library/Application Support/CodeWindow/bin/codewindow-report"
+/usr/bin/printf '%s' 'superseded reporter' > "$installed_reporter"
+CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" refresh --home "$home" >/dev/null
+if ! /usr/bin/cmp -s "$installed_reporter" "$app_dir/Contents/Helpers/codewindow-report"; then
+    print -u2 -- "Refresh did not rewrite the superseded reporter"
+    exit 1
+fi
+if [[ ! -x "$installed_reporter" ]]; then
+    print -u2 -- "Refreshed reporter is not executable"
+    exit 1
+fi
+print -- "PASS reporter refresh after an app update"
 
 CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" uninstall --home "$home" >/dev/null
 if CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" status --home "$home" >/dev/null 2>&1; then
     print -u2 -- "Uninstalled integrations still report as installed"
     exit 1
 fi
+
+# Refreshing after a removal must stay a no-op instead of resurrecting the integrations.
+CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" refresh --home "$home" >/dev/null
 
 [[ ! -e "$home/.pi/agent/extensions/codewindow.js" ]]
 [[ -f "$home/.pi/agent/extensions/unrelated.js" ]]
