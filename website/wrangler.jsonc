@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "codewindow",
+  "main": "./worker/index.ts",
   "compatibility_date": "2026-08-12",
   "preview_urls": false,
   "workers_dev": true,
@@ -10,9 +11,12 @@
       "custom_domain": true
     }
   ],
-  // Assets-only: there is no Worker script, so no runtime compatibility flags.
+  // The Worker exists only to proxy PostHog ingestion under /ingest; every other
+  // path is served straight from the static assets below.
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/ingest/*"]
   }
 }
