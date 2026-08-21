@@ -44,26 +44,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let smokeDirectory,
                let process = ProcessInspector.stamp(pid: getpid())
             {
-                try StateFiles.write(
-                    SessionState(
-                        sessionKey: "smoke-session",
-                        agent: .codex,
-                        activity: .idle,
-                        projectLabel: "codewindow",
-                        action: .waiting,
-                        actionPreview: "Inspector smoke fixture with a subject long enough to wrap",
-                        feedEvents: [SessionFeedEvent(
-                            kind: .assistant,
-                            text: "Inspector smoke fixture"
-                        )],
-                        process: process
-                    ),
-                    to: smokeDirectory
-                )
+                for index in 0...8 {
+                    try StateFiles.write(
+                        SessionState(
+                            sessionKey: index == 0 ? "smoke-session" : "smoke-session-\(index)",
+                            agent: .codex,
+                            activity: .idle,
+                            projectLabel: "codewindow",
+                            action: .waiting,
+                            actionPreview: "Inspector smoke fixture \(index + 1)",
+                            feedEvents: index == 0 ? [SessionFeedEvent(
+                                kind: .assistant,
+                                text: "Inspector smoke fixture"
+                            )] : [],
+                            process: process
+                        ),
+                        to: smokeDirectory
+                    )
+                }
             }
 
             let store = try SessionStore(directory: smokeDirectory)
             self.store = store
+            if isSmokeTest {
+                updateReminder.availableVersion = "99.0"
+            }
             let panel = makePanel(store: store)
             self.panel = panel
 
@@ -141,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let originalOrigin = panel.frame.origin
                 let trackpadMovement = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
                 let trackpadMoveWorks = trackpadMovement == NSPoint(x: -8, y: 0)
-                let listScrollingWorks = smokeTestListScrolling(of: panel)
+                let overflowInteractionWorks = smokeTestOverflowInteraction(of: panel)
                 let movedOrigin = panel.frame.origin
                 panel.constrainToVisibleArea()
                 let validPositionWasPreserved = panel.frame.origin == movedOrigin
@@ -170,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("updateRouting", updateRoutingWorks),
                     ("trackpad", trackpadMoveWorks),
                     ("momentum", momentumMoveWorks),
-                    ("listScrolling", listScrollingWorks),
+                    ("overflowInteraction", overflowInteractionWorks),
                     ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
                     ("inspector", inspectorWorks),
                     ("transition", inspectorTransitionWorks),
@@ -214,21 +219,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// An overflowing list owns vertical gestures inside it. Everything else still moves the panel.
-    private func smokeTestListScrolling(of panel: FloatingPanel) -> Bool {
+    /// Overflow rows scroll, while the grab strip above them remains a two-axis drag surface.
+    private func smokeTestOverflowInteraction(of panel: FloatingPanel) -> Bool {
         let reportedHeight = panel.scrollableListHeight
         defer { panel.scrollableListHeight = reportedHeight }
 
         panel.scrollableListHeight = PanelMetrics.maximumListHeight
         let insideList = NSPoint(x: 100, y: PanelMetrics.bezel + 1)
-        let aboveList = NSPoint(x: 100, y: PanelMetrics.bezel + PanelMetrics.maximumListHeight + 1)
+        let grabStrip = NSPoint(
+            x: 100,
+            y: PanelMetrics.bezel
+                + PanelMetrics.maximumListHeight
+                + PanelMetrics.dragHandleHeight / 2
+        )
         let overflowingListScrolls = panel.scrollsList(at: insideList, deltaX: 0, deltaY: -6)
             && !panel.scrollsList(at: insideList, deltaX: -6, deltaY: 0)
-            && !panel.scrollsList(at: aboveList, deltaX: 0, deltaY: -6)
+        let grabStripMoves = !panel.scrollsList(at: grabStrip, deltaX: 0, deltaY: -6)
 
         panel.scrollableListHeight = 0
         let shortListMovesPanel = !panel.scrollsList(at: insideList, deltaX: 0, deltaY: -6)
-        return overflowingListScrolls && shortListMovesPanel
+        return reportedHeight == PanelMetrics.maximumListHeight
+            && overflowingListScrolls
+            && grabStripMoves
+            && shortListMovesPanel
     }
 
     private func smokeTestMomentumMovement(

@@ -142,10 +142,10 @@ struct AvailableUpdateRow: View {
                     .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
 
                 VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
-                    Text("CodeWindow \(version) is ready")
+                    Text("Update CodeWindow to \(version)")
                         .font(.system(size: PanelMetrics.actionSize, weight: .regular))
                         .foregroundStyle(PanelPalette.title)
-                    Text("Review and install the update")
+                    Text("Click to review and install")
                         .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                         .foregroundStyle(PanelPalette.meta)
                         .fixedSize(horizontal: false, vertical: true)
@@ -157,8 +157,9 @@ struct AvailableUpdateRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help("Update to CodeWindow \(version)")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("CodeWindow \(version) is ready. Review and install the update.")
-        .accessibilityHint("Shows the available update")
+        .accessibilityLabel("Update CodeWindow to \(version)")
+        .accessibilityHint("Opens the updater to review and install the latest version")
     }
 }

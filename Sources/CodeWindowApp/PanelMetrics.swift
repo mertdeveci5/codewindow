@@ -26,6 +26,12 @@ enum PanelMetrics {
     static let separatorHeight: CGFloat = 0.5
     static let separatorInset: CGFloat = rowInsetHorizontal + glyphSize + glyphGap
 
+    /// An overflowing list needs its own drag surface because the rows consume vertical
+    /// trackpad gestures for scrolling.
+    static let dragHandleHeight: CGFloat = 16
+    static let dragHandleWidth: CGFloat = 28
+    static let dragHandleThickness: CGFloat = 3
+
     /// Height used before SwiftUI reports its first measurement.
     static let initialHeight: CGFloat = rowHeight + bezel * 2
 
