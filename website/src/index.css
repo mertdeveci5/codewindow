@@ -293,7 +293,7 @@
 
     .mobile-nav {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0.25rem;
       padding-block: 0 0.5rem;
     }
@@ -402,6 +402,10 @@
   .sidebar-nav a:hover,
   .sidebar-footer > a:hover {
     color: rgb(255 255 255 / 0.86);
+  }
+
+  .sidebar-nav a[aria-current="page"] {
+    color: rgb(255 255 255 / 0.92);
   }
 
   .sidebar-footer {
