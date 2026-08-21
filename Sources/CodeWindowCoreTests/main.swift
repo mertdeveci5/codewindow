@@ -747,6 +747,31 @@ func testHighestAgentPIDs() throws {
     )
 }
 
+func testTrackedAgentAncestors() throws {
+    let parentByPID: [Int32: Int32] = [
+        300: 200,
+        200: 100,
+        100: 1,
+        400: 350,
+        350: 1,
+        500: 501,
+        501: 500,
+    ]
+    func descends(processPID: Int32, from ancestorPIDs: Set<Int32>) -> Bool {
+        ProcessInspector.processDescendsFromAny(
+            processPID: processPID,
+            ancestorPIDs: ancestorPIDs,
+            parentPID: { parentByPID[$0] }
+        )
+    }
+
+    try require(descends(processPID: 300, from: [100]), "Nested helper did not match its tracked agent")
+    try require(descends(processPID: 300, from: [200]), "Direct tracked parent was not matched")
+    try require(!descends(processPID: 300, from: [300]), "A process matched itself as an ancestor")
+    try require(!descends(processPID: 400, from: [100]), "Unrelated process matched a tracked agent")
+    try require(!descends(processPID: 500, from: [100]), "Cyclic ancestry did not terminate")
+}
+
 func testApplicationOwnership() throws {
     let parentByPID: [Int32: Int32] = [
         300: 200,
@@ -1115,6 +1140,7 @@ let tests: [(String, () throws -> Void)] = [
     ("installation analytics", testInstallationAnalytics),
     ("terminal agent discovery", testTerminalAgentDiscovery),
     ("highest agent PIDs", testHighestAgentPIDs),
+    ("tracked agent ancestors", testTrackedAgentAncestors),
     ("terminal application ownership", testApplicationOwnership),
     ("Codex profile discovery", testCodexProfileDiscovery),
     ("hook installer", testHookInstaller),
