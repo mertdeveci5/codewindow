@@ -2,7 +2,9 @@ import type { PostHog } from "posthog-js/dist/module.slim";
 import { DOWNLOAD_URL, VERSION } from "@/lib/site";
 
 const projectKey = import.meta.env.VITE_POSTHOG_KEY?.trim();
-const apiHost = import.meta.env.VITE_POSTHOG_HOST?.trim() || "https://us.i.posthog.com";
+// Same-origin by default so ingestion is proxied through this site's own Worker
+// (see worker/index.ts) instead of the widely blocked us.i.posthog.com.
+const apiHost = import.meta.env.VITE_POSTHOG_HOST?.trim() || "/ingest";
 let client: PostHog | undefined;
 let initialization: Promise<PostHog | undefined> | undefined;
 
@@ -30,6 +32,7 @@ export function initializeAnalytics(): void {
         webVitalsAutocapture: AnalyticsExtensions.webVitalsAutocapture,
       },
       api_host: apiHost,
+      ui_host: "https://us.posthog.com",
       advanced_disable_feature_flags: true,
       autocapture: false,
       before_send: (event) => {

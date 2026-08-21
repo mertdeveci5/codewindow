@@ -6,7 +6,7 @@ The panel stays above other windows and follows you across Spaces. Each running 
 
 CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. Process ancestry lets the same behavior work with integrated terminals.
 
-Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. You can also move the panel by clicking and dragging the background.
+Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. When enough sessions are running for the rows to scroll, use the grab strip above them to move the panel; gestures over the rows scroll the list. You can also move the panel by clicking and dragging the grab strip or background.
 
 CodeWindow uses SwiftUI and AppKit. Session state is stored in small files on disk.
 
@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.18-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.19-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -62,7 +62,7 @@ open -a CodeWindow
 
 ## Updates
 
-CodeWindow uses Sparkle to check for updates from GitHub once per day. Right-click the panel and choose Check for Updates to check immediately. Sparkle shows the version and asks before installing it.
+CodeWindow uses Sparkle to check for updates from GitHub once per day. When a release is available, the panel shows an update row that you can click to review and install it. Right-click the panel and choose Check for Updates to check immediately. Sparkle shows the version and asks before installing it.
 
 Every update archive and update feed is signed with a CodeWindow EdDSA key. Sparkle verifies those signatures before replacing the app. Public releases are also signed with Developer ID and notarized by Apple.
 

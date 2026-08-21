@@ -110,6 +110,9 @@ struct PanelContentView: View {
                 AvailableUpdateRow(version: availableVersion, showUpdate: checkForUpdates)
                     .transition(.opacity)
             }
+            if isSessionListOverflowing {
+                PanelDragHandle()
+            }
             sessionList
         }
         .animation(motion, value: store.sessions.map(\.id))
@@ -153,10 +156,14 @@ struct PanelContentView: View {
         min(listContentHeight, PanelMetrics.maximumListHeight)
     }
 
+    private var isSessionListOverflowing: Bool {
+        listContentHeight > PanelMetrics.maximumListHeight
+    }
+
     /// Height of the scrollable band, measured up from the panel's bottom bezel. Zero while
     /// every session fits, which keeps trackpad gestures moving the panel as they always have.
     private var scrollableListHeight: CGFloat {
-        listContentHeight > PanelMetrics.maximumListHeight ? listHeight : 0
+        isSessionListOverflowing ? listHeight : 0
     }
 
     private func installAgentHooks() async {
@@ -215,6 +222,24 @@ struct PanelContentView: View {
 }
 
 // MARK: - Session rows
+
+/// A stable movement target when the session rows need to own vertical scrolling.
+/// Scroll gestures start outside the list here, so `FloatingPanel` moves in any direction.
+private struct PanelDragHandle: View {
+    var body: some View {
+        Capsule()
+            .fill(PanelPalette.meta.opacity(0.65))
+            .frame(
+                width: PanelMetrics.dragHandleWidth,
+                height: PanelMetrics.dragHandleThickness
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: PanelMetrics.dragHandleHeight)
+            .contentShape(Rectangle())
+            .help("Move CodeWindow")
+            .accessibilityHidden(true)
+    }
+}
 
 private struct SessionRow: View {
     let session: PresentedSession
