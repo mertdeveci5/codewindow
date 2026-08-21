@@ -42,6 +42,24 @@ public enum ProcessInspector {
         )
     }
 
+    /// Returns whether a live process is nested beneath any of the supplied live processes.
+    /// Comparing full stamps prevents a reused PID from hiding an unrelated session.
+    public static func process(
+        _ process: ProcessStamp,
+        descendsFromAny possibleAncestors: Set<ProcessStamp>
+    ) -> Bool {
+        guard isCurrent(process) else { return false }
+        let ancestorPIDs = Set(possibleAncestors.compactMap { ancestor in
+            isCurrent(ancestor) ? ancestor.pid : nil
+        })
+        guard !ancestorPIDs.isEmpty else { return false }
+        return processDescendsFromAny(
+            processPID: process.pid,
+            ancestorPIDs: ancestorPIDs,
+            parentPID: parentPID(pid:)
+        )
+    }
+
     public static func findAgentProcess(agent: AgentKind, startingAt initialPID: Int32 = getppid()) -> ProcessStamp? {
         var pid = initialPID
 
@@ -135,6 +153,21 @@ public enum ProcessInspector {
             }
             return pid
         })
+    }
+
+    static func processDescendsFromAny(
+        processPID: Int32,
+        ancestorPIDs: Set<Int32>,
+        parentPID: (Int32) -> Int32?
+    ) -> Bool {
+        var pid = parentPID(processPID)
+        var visited: Set<Int32> = []
+
+        while let current = pid, current > 1, visited.insert(current).inserted {
+            if ancestorPIDs.contains(current) { return true }
+            pid = parentPID(current)
+        }
+        return false
     }
 
     static func processBelongsToApplication(

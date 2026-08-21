@@ -141,6 +141,18 @@ final class SessionStore: ObservableObject {
         let discovered = diagnostics
             .filter { ProcessInspector.isCurrent($0.process) }
             .filter { !hookedProcesses.contains($0.process) }
+            .filter { candidate in
+                // Codex can start a bundled Codex helper beneath the real terminal process.
+                // The helper inherits its TTY and working directory, but it is part of the
+                // already reported session rather than another agent missing its hooks.
+                let sameAgentAncestors = Set(hooked.compactMap { state in
+                    state.agent == candidate.agent ? state.process : nil
+                })
+                return !ProcessInspector.process(
+                    candidate.process,
+                    descendsFromAny: sameAgentAncestors
+                )
+            }
 
         let next = (hooked.map(PresentedSession.reported) + discovered).sorted {
             if $0.activity.priority != $1.activity.priority {
