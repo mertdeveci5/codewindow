@@ -2,12 +2,12 @@ import { ExternalLinkIcon, GithubIcon } from "lucide-react";
 import type React from "react";
 import { DownloadButton } from "@/components/DownloadButton";
 import { captureExternalLinkClicked } from "@/lib/analytics";
-import { RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
+import { CHANGELOG_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 const NAV_ITEMS = [
-  { href: "#overview", label: "Overview" },
-  { href: "#demo", label: "Demo" },
-  { href: "#install", label: "Install" },
+  { hash: "#overview", label: "Overview" },
+  { hash: "#demo", label: "Demo" },
+  { hash: "#install", label: "Install" },
 ] as const;
 
 /** The same bitmap mark used by the macOS app and browser favicon. */
@@ -22,7 +22,9 @@ export function AppMark({ className }: { className?: string }): React.ReactEleme
   );
 }
 
-export function SiteHeader(): React.ReactElement {
+export function SiteHeader({ page = "home" }: { page?: "changelog" | "home" }): React.ReactElement {
+  const sectionHref = (hash: string): string => (page === "home" ? hash : `/${hash}`);
+
   return (
     <>
       <header className="site-header">
@@ -38,6 +40,12 @@ export function SiteHeader(): React.ReactElement {
           </a>
 
           <div className="flex items-center gap-3">
+            <a
+              className="hidden text-[0.8125rem] text-white/60 transition-colors hover:text-white/90 sm:inline"
+              href={CHANGELOG_URL}
+            >
+              Changelog
+            </a>
             <a
               className="hidden text-[0.8125rem] text-white/60 transition-colors hover:text-white/90 min-[420px]:inline"
               href={REPO_URL}
@@ -55,25 +63,31 @@ export function SiteHeader(): React.ReactElement {
 
         <nav className="mobile-nav shell" aria-label="On this page">
           {NAV_ITEMS.map((item) => (
-            <a href={item.href} key={item.href}>
+            <a href={sectionHref(item.hash)} key={item.hash}>
               {item.label}
             </a>
           ))}
+          <a aria-current={page === "changelog" ? "page" : undefined} href={CHANGELOG_URL}>
+            Changelog
+          </a>
         </nav>
       </header>
 
       <aside className="site-sidebar" aria-label="Primary navigation">
-        <a className="sidebar-brand" href="#overview">
+        <a className="sidebar-brand" href={page === "home" ? "#overview" : "/"}>
           <AppMark className="size-6 shrink-0" />
           <span className="hand-underline">CodeWindow</span>
         </a>
 
         <nav className="sidebar-nav" aria-label="On this page">
           {NAV_ITEMS.map((item) => (
-            <a href={item.href} key={item.href}>
+            <a href={sectionHref(item.hash)} key={item.hash}>
               {item.label}
             </a>
           ))}
+          <a aria-current={page === "changelog" ? "page" : undefined} href={CHANGELOG_URL}>
+            Changelog
+          </a>
         </nav>
 
         <div className="sidebar-footer">
