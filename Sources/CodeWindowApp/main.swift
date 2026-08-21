@@ -140,9 +140,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
                 let publicKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+                let scheduledCheckInterval = Bundle.main.object(
+                    forInfoDictionaryKey: "SUScheduledCheckInterval"
+                ) as? Int
                 let hasSparkleConfiguration = feedURL ==
                     "https://github.com/mertdeveci5/codewindow/releases/latest/download/appcast.xml"
                     && publicKey?.isEmpty == false
+                    && scheduledCheckInterval == 3_600
                 let originalOrigin = panel.frame.origin
                 let trackpadMovement = panel.moveByTrackpad(deltaX: 8, deltaY: 0)
                 let trackpadMoveWorks = trackpadMovement == NSPoint(x: -8, y: 0)
