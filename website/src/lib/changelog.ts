@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.22",
+    date: "2026-08-25",
+    dateLabel: "Aug 25, 2026",
+    changes: [
+      "Waits for a deliberate hover before opening the agent activity inspector.",
+    ],
+  },
+  {
     version: "0.1.21",
     date: "2026-08-21",
     dateLabel: "Aug 21, 2026",
