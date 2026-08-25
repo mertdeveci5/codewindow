@@ -78,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let session = smokeSession {
                     inspector?.rowHoverChanged(session, isHovered: true)
                 }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                let hoverIntentWorks = panel.childWindows?.first?.isVisible != true
                 let presentationDeadline = Date().addingTimeInterval(2)
                 while panel.childWindows?.first?.isVisible != true,
                       Date() < presentationDeadline {
@@ -181,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("momentum", momentumMoveWorks),
                     ("overflowInteraction", overflowInteractionWorks),
                     ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
+                    ("hoverIntent", hoverIntentWorks),
                     ("inspector", inspectorWorks),
                     ("transition", inspectorTransitionWorks),
                 ]

@@ -15,6 +15,8 @@ final class InspectorPanel: NSPanel {
 
 @MainActor
 final class InspectorController: NSObject {
+    private static let initialHoverDelay: DispatchTimeInterval = .milliseconds(700)
+
     private let parentPanel: FloatingPanel
     private let store: SessionStore
     private let model = InspectorModel()
@@ -53,7 +55,7 @@ final class InspectorController: NSObject {
             if panel?.isVisible == true {
                 present(session)
             } else {
-                schedule(after: .milliseconds(120)) { [weak self] in
+                schedule(after: Self.initialHoverDelay) { [weak self] in
                     guard let self, self.hoveredSessionID == session.id else { return }
                     self.present(session)
                 }
