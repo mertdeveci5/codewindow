@@ -89,13 +89,9 @@ final class CloudViewController: ObservableObject {
             engine = nil
         }
 
-        if defaults.bool(forKey: DefaultsKey.pendingDeletion), handle != nil || provisioningIntent != nil {
-            phase = .pendingDeletion("Remote cleanup still needs Cool login or connectivity.")
-        } else if defaults.bool(forKey: DefaultsKey.enabled), handle != nil || provisioningIntent != nil {
-            phase = .recovering
-        } else {
-            phase = .disabled
-        }
+        // A saved view is deliberately dormant after every app launch. Reconnecting
+        // can contact Cool and must start only from an explicit context-menu action.
+        phase = .disabled
     }
 
     deinit {
@@ -127,6 +123,8 @@ final class CloudViewController: ObservableObject {
 
     var setupTitle: String {
         switch phase {
+        case .disabled where hasPendingDeletion: "Finish Turning Off Cloud View…"
+        case .disabled where isConfigured: "Connect Cloud View…"
         case .checking: "Checking Cloud View…"
         case .provisioning: "Creating Cloud View…"
         case .recovering: "Reconnecting Cloud View…"
@@ -193,24 +191,9 @@ final class CloudViewController: ObservableObject {
         }
     }
 
-    func restoreIfNeeded() async {
-        guard defaults.bool(forKey: DefaultsKey.enabled),
-              !defaults.bool(forKey: DefaultsKey.pendingDeletion),
-              handle != nil || provisioningIntent != nil
-        else { return }
-        await reconnect()
-    }
-
-    func applicationDidWake() async {
-        guard defaults.bool(forKey: DefaultsKey.enabled),
-              !defaults.bool(forKey: DefaultsKey.pendingDeletion),
-              handle != nil || provisioningIntent != nil
-        else { return }
-        if phase == .live {
-            enqueueSnapshot()
-        } else if !isBusy {
-            await reconnect()
-        }
+    func applicationDidWake() {
+        guard phase == .live else { return }
+        enqueueSnapshot()
     }
 
     func shutdown() {

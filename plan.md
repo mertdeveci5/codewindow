@@ -16,10 +16,10 @@ Current checkpoint:
 | P1 — viewer design approval | Production-shaped local HTML viewer proves the split-view hierarchy, interaction, responsive behavior, and visual finish | Complete | User approved the direction; refined `index.html` now embeds the exact CodeWindow Codex, Claude, and Pi artwork and row language |
 | P2 — live CLI contract | Authenticated disposable Cool Computer proves public URL, writes, durable service, cold wake, and deletion | Partial | `cool 0.9.0`; disposable `meatproxyspikepublic1` proved public/network-none creation, stdin file write, public share, canonical HTTPS URL, unauthenticated HTTP access, durable service, and verified deletion. Earlier spikes proved ownership bootstrap and service replacement. An actual cold wake remains unproven because manual `cool stop` returned HTTP 409. |
 | P3 — foundation | Snapshot DTO, CLI runner, typed errors, ownership handle, and fake-CLI tests pass | Complete | `Scripts/test.sh`: snapshot privacy, auth classification, exact CLI contract, bounded output, cancellation, recovery/ownership, missing-marker refusal, policy drift, and the existing regression groups pass. |
-| P4 — mirror lifecycle | Provision, publish, latest-wins, heartbeat, recovery, restart, and deletion pass with fakes | Implemented; live validation pending | Fake contract proves sequential naming, crash-safe provisioning receipt recovery, public-by-default provisioning, legacy-private migration, stopped-service restart, cold publish retry, marker mismatch/missing-marker refusal, auth fail-closed behavior, and deletion. Controller implements latest-wins, heartbeat, multi-stage backoff, wake recovery, pending deletion, and publish/delete serialization. |
+| P4 — mirror lifecycle | Provision, publish, latest-wins, heartbeat, explicit reconnect, recovery, and deletion pass with fakes | Implemented; live validation pending | Fake contract proves sequential naming, crash-safe provisioning receipt recovery, public-by-default provisioning, legacy-private migration, stopped-service restart, cold publish retry, marker mismatch/missing-marker refusal, auth fail-closed behavior, and deletion. Controller implements a dormant-on-launch boundary, latest-wins, heartbeat, multi-stage backoff after explicit connection, pending deletion, and publish/delete serialization. |
 | P5 — app integration | Approved viewer, consent, menus, packaging, and accessibility are wired to live snapshots | Complete locally | Universal app bundles the exact viewer; five consecutive smoke runs pass. Desktop/mobile Chromium checks have no console errors or external requests and Lighthouse reports 100 with zero failed audits. |
 | P6 — authenticated end-to-end | Real sessions update remotely, auth expiry fails closed, Mac offline is detected, and cleanup succeeds | Not run | Deliberately deferred to the explicit in-app consent flow; no production `meatproxyN` computer has been created. Cool login is ready and the first real generation will be `meatproxy1`. |
-| P7 — release readiness | Core tests, packaged smoke, integrations, universal build, signing, and documentation pass | Partial | Core tests, universal arm64/x86_64 ad-hoc package, exact resource hash, 20 consecutive current-architecture stress smokes plus five final universal smokes, agent-integration suite, and README pass. Developer ID signing, notarization, tag/release, and P6 remain pending. |
+| P7 — release readiness | Core tests, packaged smoke, integrations, universal build, signing, and documentation pass | Partial | Version 0.1.25 was Developer ID signed, notarized, stapled, Gatekeeper-verified, and published. The 0.1.26 dormant-on-launch regression fix and P6 remain pending final release validation. |
 
 Checkpoint rules:
 
@@ -60,6 +60,8 @@ The existing installer process helper is not suitable for Cool commands: it bloc
 
 ### What the user gets
 
+Installing, launching, or waking CodeWindow does not contact Cool. A saved view stays dormant.
+
 1. Right-click CodeWindow and choose **Set Up Cloud View…**.
 2. CodeWindow verifies that a supported `cool` CLI exists and that `cool whoami --json` succeeds.
 3. CodeWindow presents a one-time disclosure of exactly what will leave the Mac.
@@ -69,6 +71,7 @@ The existing installer process helper is not suitable for Cool commands: it bloc
    - **Copy Cloud View Link**
    - **Turn Off Cloud View…**
 6. Opening the public URL on another device requires only the link; Cool browser login is not required.
+7. On a later app launch, choose **Connect Cloud View…** explicitly to resume a saved view, or turn it off without reconnecting first.
 
 ### What is mirrored
 
@@ -369,7 +372,8 @@ Do not discover or claim a computer merely because its name begins with `meatpro
 - The browser polls `state.json` once per second while visible and every five seconds while backgrounded, using `cache: "no-store"` and a cache-busting query.
 - The browser keeps the last successfully parsed snapshot if a fetch or JSON parse fails. A partially observed `O_TRUNC` write therefore causes a retry, not an empty UI.
 - Render all remote strings through DOM `textContent`; never use session data with `innerHTML`.
-- Register for macOS wake notifications and publish immediately after wake.
+- If Cloud View is already live in the current app process, publish immediately after wake.
+- Never reconnect a saved Cloud View during app launch or wake; only an explicit menu action may cross that boundary.
 - Do not block app termination to send an offline message. Heartbeat age makes the remote page offline within 90 seconds.
 
 ## State machine and recovery
@@ -516,6 +520,8 @@ Extend the existing signed-app smoke path to verify:
 - Confirm missing CLI and logged-out UX performs no mutations.
 - Set up while authenticated and confirm one public computer is created.
 - Open the link in a signed-out/private browser and confirm the viewer loads without Cool login.
+- Quit and relaunch CodeWindow; confirm no Cool command runs and no Cloud status row appears.
+- Choose **Connect Cloud View…** and confirm only that explicit action resumes the saved computer.
 - Open and copy the link; test Mac, iPhone-size viewport, and a real phone.
 - Run Codex, Claude, and Pi simultaneously and confirm sidebar ordering, selection stability, and feed updates.
 - Confirm commands, long repository names, Unicode, attention states, and more than eight sessions remain legible.
@@ -576,7 +582,7 @@ Exit: local smoke tests and responsive/accessibility viewer tests pass.
 ### Phase 6: live validation and release
 
 - Repeat the live spike using the actual implementation and a disposable computer first.
-- Test authenticated mobile access, sleep/wake, logout, app restart, update, and deletion.
+- Test public mobile access, sleep/wake while live, dormant app restart, explicit reconnect, update, and deletion.
 - Update README privacy and usage documentation.
 - Run the normal universal package, signing, smoke, integration, and notarization pipeline.
 
@@ -615,6 +621,7 @@ The user-visible finished product consists of:
 4. Explicit live, reconnecting, empty, attention, stale, offline, unsupported-version, and failure states.
 5. Fail-closed authentication: missing CLI, unsupported CLI, logout, or expired auth can never fall through to remote mutation.
 6. Complete deletion or a visible pending-deletion checkpoint—never a silent orphan.
+7. No startup Cloud connection or error row; a saved view remains dormant until the user explicitly connects it.
 
 ## Acceptance criteria
 
@@ -639,7 +646,7 @@ The user-visible finished product consists of:
 
 - Updates are serialized, bounded, latest-wins, and recover after transient failure or cold computer start.
 - Auth expiry stops retries immediately.
-- App restart reuses exactly the verified computer and never creates a duplicate silently.
+- App restart performs no Cool command. Explicit reconnect reuses exactly the verified computer and never creates a duplicate silently.
 - Malformed/partial state reads do not blank the viewer.
 - Routine tests and packaging require no Cool account or network access.
 
@@ -666,7 +673,7 @@ Every required row must be filled with Pass/Fail and concrete evidence at the en
 | E07 | Detail synchronization | Partial — all event presentations render from the fixture; real no-reload updates are pending. | Yes |
 | E08 | No invented progress | Pass — viewer renders only snapshot action/event facts and contains no percentage or synthetic stage logic. | Yes |
 | E09 | Cache/partial-write resilience | Partial — cache busting, abort timeout, deep validation, revision gating, malformed-higher-revision retention, and invalid-first-state behavior are browser-checked; repeated live partial writes remain pending. | Yes |
-| E10 | Offline/recovery | Pending — 90-second stale state and wake recovery are implemented but not timed against a real mirror. | Yes |
+| E10 | Offline/recovery | Pending — 90-second stale state and wake recovery while live are implemented but not timed against a real mirror. Relaunch must remain dormant until explicit reconnect. | Yes |
 | E11 | Auth expiry | Partial — auth errors fail closed in fakes, including service inspection with no subsequent mutation; live expiry during mirroring is pending. | Yes |
 | E12 | Cold computer/service | Partial — fake cold/service recovery passes; disposable durable service passed, but manual cold transition returned HTTP 409. | Yes |
 | E13 | Ownership mismatch | Partial — fake resume and delete refuse mismatched and missing markers, while a missing computer remains idempotent; packaged repair UI has not been manually exercised. | Yes |
@@ -675,7 +682,7 @@ Every required row must be filled with Pass/Fail and concrete evidence at the en
 | E16 | Mobile design | Partial — Chromium mobile list/detail/Back/focus/a11y-tree/safe-area behavior and Lighthouse pass; a real phone remains pending. | Yes |
 | E17 | Empty/unsupported states | Partial — unsupported schemas, malformed first state, and malformed updates after valid state are browser-checked; the packaged no-session state awaits P6. | Yes |
 | E18 | Turn off and deletion | Partial — disposable CLI deletion and fake marker-verified deletion pass; real in-app Turn Off remains pending. | Yes |
-| E19 | Pending deletion | Pending — persistence/state path is implemented; restart around a simulated delete failure is not yet automated. | Yes |
+| E19 | Pending deletion | Pending — persistence/state path is implemented; relaunch remains dormant and explicit Finish Turning Off routes to deletion, but restart around a simulated delete failure is not yet automated. | Yes |
 | E20 | Packaged resource | Pass — universal arm64/x86_64 app contains the exact source hash and five consecutive isolated smoke runs pass without Cool mutation. | Yes |
 | E21 | Regression suite | Pass — 24 test groups, universal build, 20/20 current-architecture stress smokes, 5/5 final universal smokes, and packaged agent-integration lifecycle pass. The stress run also covers the canonical floating-anchor fix for measurement callbacks arriving during detach animation. | Yes |
 | E22 | Repository boundary | Pass — feature edits are confined to CodeWindow; RuntimeVM has no tracked feature diff. | Yes |
@@ -731,6 +738,7 @@ Decisions made:
 
 - V1 is a public-link, read-only live mirror and goes offline with the Mac.
 - New views default to public; previously saved private views remain private after migration.
+- Saved views never reconnect during app launch; connection starts only from the explicit menu action.
 - The Mac remains the source of truth and all agents remain local.
 - The remote design uses a dark Apple Mail-style sidebar/detail layout.
 - The detail pane mirrors only CodeWindow's existing sanitized, bounded activity feed.

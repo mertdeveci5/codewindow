@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.25-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.26-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -86,6 +86,10 @@ If `cool` is missing, too old, or logged out, Cloud View pauses without creating
 remote resource. CodeWindow never reads or stores Cool credentials and never runs an interactive
 login. Use **Turn Off Cloud View…** to verify ownership and permanently delete its dedicated Cool
 Computer; this does not alter local sessions, hooks, or agent settings.
+
+CodeWindow never connects to Cool automatically when the app launches. A saved Cloud View remains
+dormant until you explicitly choose **Connect Cloud View…**; you can instead turn it off without
+first reconnecting. Once connected for the current run, normal live updates and recovery continue.
 
 ## Updates
 

@@ -8,6 +8,16 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.26",
+    date: "2026-08-26",
+    dateLabel: "Aug 26, 2026",
+    changes: [
+      "Keeps saved Cloud Views dormant when CodeWindow launches or the Mac wakes.",
+      "Connects to Cool only after you explicitly choose Connect Cloud View from the panel menu.",
+      "Prevents stale saved Cloud configuration from placing an error row in the panel at startup.",
+    ],
+  },
+  {
     version: "0.1.25",
     date: "2026-08-26",
     dateLabel: "Aug 26, 2026",

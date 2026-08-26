@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CodeWindowCloud
 import CodeWindowCore
 import Darwin
 import Sparkle
@@ -80,6 +81,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 : nil
             let dockDefaults = smokeDefaultsSuite.flatMap(UserDefaults.init(suiteName:))
                 ?? .standard
+            if isSmokeTest {
+                let savedCloudView = CloudMirrorHandle(
+                    computerID: "smoke-saved-computer",
+                    slug: "meatproxy1",
+                    generation: 1,
+                    visibility: .privateAccess,
+                    ownershipMarker: String(repeating: "a", count: 64),
+                    remoteIDSeed: String(repeating: "b", count: 64),
+                    ownershipEstablished: true,
+                    publicURL: URL(string: "https://meatproxy1.cool.computer")
+                )
+                dockDefaults.set(
+                    try JSONEncoder().encode(savedCloudView),
+                    forKey: "cloudView.handle"
+                )
+                dockDefaults.set(true, forKey: "cloudView.enabled")
+            }
             let cloudView = CloudViewController(defaults: dockDefaults)
             self.cloudView = cloudView
             let panel = makePanel(
@@ -161,6 +179,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let hasCloudViewer = cloudViewer?.contains("Content-Security-Policy") == true
                     && cloudViewer?.contains("state.json") == true
                     && cloudViewer?.contains("font-weight: 400") == true
+                cloudView.applicationDidWake()
+                let savedCloudViewStartsDormant = cloudView.phase == .disabled
+                    && cloudView.statusPresentation == nil
+                    && cloudView.setupTitle == "Connect Cloud View…"
                 let hasSparkleFramework = FileManager.default.fileExists(
                     atPath: Bundle.main.bundleURL
                         .appendingPathComponent("Contents/Frameworks/Sparkle.framework")
@@ -210,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("logos", AgentLogoAssets.allAvailable),
                     ("icon", hasAppIcon),
                     ("cloudViewer", hasCloudViewer),
+                    ("cloudDormant", savedCloudViewStartsDormant),
                     ("sparkle", hasSparkleFramework && hasSparkleConfiguration),
                     ("hookGuidance", diagnosticGuidanceWorks),
                     ("livePreview", livePreviewWorks),
@@ -252,7 +275,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .sink { [weak cloudView] sessions, feeds in
                     cloudView?.update(sessions: sessions, feeds: feeds)
                 }
-            Task { await cloudView.restoreIfNeeded() }
             NSWorkspace.shared.notificationCenter.addObserver(
                 self,
                 selector: #selector(frontmostApplicationDidChange),
@@ -560,7 +582,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func applicationDidWake() {
-        Task { await cloudView?.applicationDidWake() }
+        cloudView?.applicationDidWake()
     }
 
     @objc private func frontmostApplicationDidChange() {
