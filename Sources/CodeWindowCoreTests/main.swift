@@ -1433,10 +1433,10 @@ func testCloudMirrorContract() async throws {
     let viewer = Data("<html>viewer</html>".utf8)
     let initial = Data("{\"revision\":1}".utf8)
     let published = Data("{\"revision\":2}".utf8)
-    let privateComputer: [String: Any] = [
+    let publicComputer: [String: Any] = [
         "id": computerID,
         "slug": "meatproxy10",
-        "visibility": "private",
+        "visibility": "public",
         "status": "running",
         "network_policy": ["mode": "none"],
     ]
@@ -1454,22 +1454,22 @@ func testCloudMirrorContract() async throws {
         ]])),
         CoolTestStep(
             arguments: [
-                "create", "meatproxy10", "--visibility", "private",
+                "create", "meatproxy10", "--visibility", "public",
                 "--network", "none", "--command", bootstrap,
                 "--port", "8000", "--json",
             ],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
             result: rawCoolResult(markerJSON)
         ),
         CoolTestStep(
-            arguments: ["share", "private", computerID, "--json"],
+            arguments: ["share", "public", computerID, "--json"],
             result: coolResult([:])
         ),
         CoolTestStep(
@@ -1513,7 +1513,7 @@ func testCloudMirrorContract() async throws {
         CoolTestStep(
             arguments: ["url", computerID, "--json"],
             result: coolResult([
-                "visibility": "private",
+                "visibility": "public",
                 "slug": "meatproxy10",
                 "public_url": "https://meatproxy10.cool.computer",
             ])
@@ -1527,7 +1527,7 @@ func testCloudMirrorContract() async throws {
         ),
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
@@ -1550,12 +1550,13 @@ func testCloudMirrorContract() async throws {
         remoteIDSeed: seed
     )
     try require(handle.slug == "meatproxy10", "Cloud computer used the wrong sequential slug")
+    try require(handle.visibility == .publicAccess, "New Cloud Views were not public by default")
     try require(!handle.ownershipEstablished, "Cloud ownership was persisted before its marker was verified")
     let configured = try await engine.configureNew(handle: handle, initialSnapshot: initial)
     try require(configured.ownershipEstablished, "Cloud ownership marker was not recorded")
     try require(
         configured.publicURL?.absoluteString == "https://meatproxy10.cool.computer",
-        "Cloud URL did not come from the expected private Cool hostname"
+        "Cloud URL did not come from the expected public Cool hostname"
     )
     try await engine.publish(published, to: configured)
     try await engine.deleteVerified(configured)
@@ -1578,6 +1579,7 @@ func testCloudRecoveryAndOwnership() async throws {
         computerID: computerID,
         slug: "meatproxy4",
         generation: 4,
+        visibility: .privateAccess,
         ownershipMarker: marker,
         remoteIDSeed: "seed",
         ownershipEstablished: true
@@ -1671,7 +1673,7 @@ func testCloudRecoveryAndOwnership() async throws {
     let resumed = try await engine.resume(handle)
     try require(
         resumed.publicURL?.absoluteString == "https://meatproxy4.cool.computer",
-        "Cold Cloud View did not resume its private URL"
+        "A saved private Cloud View did not preserve its visibility during recovery"
     )
     try await engine.publish(Data("newest".utf8), to: resumed)
     let remainingSteps = await runner.remainingSteps()
@@ -1764,10 +1766,10 @@ func testCloudFailClosedSafety() async throws {
         remoteIDSeed: "seed",
         ownershipEstablished: true
     )
-    let privateComputer: [String: Any] = [
+    let publicComputer: [String: Any] = [
         "id": computerID,
         "slug": "meatproxy7",
-        "visibility": "private",
+        "visibility": "public",
         "status": "running",
         "network_policy": ["mode": "none"],
     ]
@@ -1781,17 +1783,58 @@ func testCloudFailClosedSafety() async throws {
         "ownershipMarker": String(repeating: "a", count: 64),
         "remoteIDSeed": String(repeating: "b", count: 64),
         "ownershipEstablished": true,
-        "publicURL": "https://viewer@meatproxy7.cool.computer/private",
+        "visibility": "public",
+        "publicURL": "https://viewer@meatproxy7.cool.computer/unexpected",
     ])
     do {
         _ = try JSONDecoder().decode(CloudMirrorHandle.self, from: unsafeURLHandle)
-        throw TestFailure.assertion("A non-canonical private URL was persisted")
+        throw TestFailure.assertion("A non-canonical Cloud URL was persisted")
     } catch is DecodingError {}
+
+    let legacyMarker = String(repeating: "c", count: 64)
+    let legacySeed = String(repeating: "d", count: 64)
+    let legacyHandleData = try JSONSerialization.data(withJSONObject: [
+        "schemaVersion": 1,
+        "computerID": "legacy-private-computer",
+        "slug": "meatproxy6",
+        "generation": 6,
+        "ownershipMarker": legacyMarker,
+        "remoteIDSeed": legacySeed,
+        "ownershipEstablished": true,
+        "publicURL": "https://meatproxy6.cool.computer",
+    ])
+    let legacyHandle = try JSONDecoder().decode(CloudMirrorHandle.self, from: legacyHandleData)
+    try require(
+        legacyHandle.visibility == .privateAccess,
+        "A saved v0.1.24 Cloud View did not preserve private visibility"
+    )
+    let migratedHandle = try unwrap(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(legacyHandle)) as? [String: Any],
+        "Migrated Cloud handle was not an object"
+    )
+    try require(
+        migratedHandle["schemaVersion"] as? Int == CloudMirrorHandle.currentSchemaVersion
+            && migratedHandle["visibility"] as? String == "private",
+        "A saved private Cloud View did not migrate with explicit private visibility"
+    )
+
+    let legacyIntentData = try JSONSerialization.data(withJSONObject: [
+        "schemaVersion": 1,
+        "generation": 6,
+        "slug": "meatproxy6",
+        "ownershipMarker": legacyMarker,
+        "remoteIDSeed": legacySeed,
+    ])
+    let legacyIntent = try JSONDecoder().decode(CloudProvisioningIntent.self, from: legacyIntentData)
+    try require(
+        legacyIntent.visibility == .privateAccess,
+        "An interrupted v0.1.24 provisioning receipt did not remain private"
+    )
 
     let missingMarkerRunner = ScriptedCoolRunner(steps: try [
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
@@ -1832,14 +1875,14 @@ func testCloudFailClosedSafety() async throws {
     let authRunner = ScriptedCoolRunner(steps: try [
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
             result: rawCoolResult(markerJSON)
         ),
         CoolTestStep(
-            arguments: ["share", "private", computerID, "--json"],
+            arguments: ["share", "public", computerID, "--json"],
             result: coolResult([:])
         ),
         CoolTestStep(
@@ -1865,7 +1908,7 @@ func testCloudFailClosedSafety() async throws {
         "Authentication expiry attempted a service mutation"
     )
 
-    var openNetworkComputer = privateComputer
+    var openNetworkComputer = publicComputer
     openNetworkComputer["network_policy"] = ["mode": "open"]
     let networkRunner = ScriptedCoolRunner(steps: try [
         CoolTestStep(
@@ -1884,6 +1927,28 @@ func testCloudFailClosedSafety() async throws {
         "Network-policy drift attempted a remote mutation"
     )
 
+    var privateVisibilityComputer = publicComputer
+    privateVisibilityComputer["visibility"] = "private"
+    let visibilityRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateVisibilityComputer])
+        ),
+    ])
+    let visibilityEngine = CloudMirrorEngine(
+        runner: visibilityRunner,
+        viewerHTML: Data("viewer".utf8)
+    )
+    do {
+        _ = try await visibilityEngine.resume(handle)
+        throw TestFailure.assertion("A public Cloud View resumed after visibility drifted to private")
+    } catch CloudMirrorError.unsafeComputerConfiguration {}
+    let visibilityRemaining = await visibilityRunner.remainingSteps()
+    try require(
+        visibilityRemaining == 0,
+        "Visibility drift attempted a remote mutation"
+    )
+
     let intent = CloudProvisioningIntent(
         generation: 7,
         ownershipMarker: marker,
@@ -1896,7 +1961,7 @@ func testCloudFailClosedSafety() async throws {
         ),
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
-            result: coolResult(["computer": privateComputer])
+            result: coolResult(["computer": publicComputer])
         ),
         CoolTestStep(
             arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],

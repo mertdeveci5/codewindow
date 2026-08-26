@@ -107,23 +107,23 @@ struct PanelContentView: View {
             } message: {
                 Text("This removes CodeWindow's Codex and Claude hooks, Pi extension, reporter, and local state. Other agent settings stay unchanged.")
             }
-            .alert("Set up private Cloud View?", isPresented: $confirmsCloudSetup) {
+            .alert("Set up public Cloud View?", isPresented: $confirmsCloudSetup) {
                 Button("Cancel", role: .cancel) {
                     cloudView.cancelConsent()
                 }
-                Button("Create Private View") {
+                Button("Create Public View") {
                     Task { await cloudView.createCloudView() }
                 }
             } message: {
-                Text("CodeWindow will create a dedicated private Cool Computer and continuously mirror session summaries plus recent chat and tool activity. Agents keep running on this Mac, and the view goes offline when CodeWindow stops updating it.")
+                Text("CodeWindow will create a public Cool Computer. Anyone with the link can view the bounded session summaries and recent activity shown by Cloud View. Agents keep running on this Mac, and the view goes offline when CodeWindow stops updating it.")
             }
             .alert("Turn off Cloud View?", isPresented: $confirmsCloudTurnOff) {
                 Button("Cancel", role: .cancel) {}
-                Button("Delete Private View", role: .destructive) {
+                Button("Delete Cloud View", role: .destructive) {
                     Task { await cloudView.turnOff() }
                 }
             } message: {
-                Text("This permanently deletes the dedicated Cool Computer and its private link. Your local CodeWindow sessions and agent setup are unchanged.")
+                Text("This permanently deletes the dedicated Cool Computer and its link. Your local CodeWindow sessions and agent setup are unchanged.")
             }
             .alert("Forget the saved Cloud View?", isPresented: $confirmsCloudForget) {
                 Button("Cancel", role: .cancel) {}

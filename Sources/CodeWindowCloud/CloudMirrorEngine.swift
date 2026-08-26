@@ -18,19 +18,31 @@ private enum CloudComputerName {
     }
 }
 
+public enum CloudViewVisibility: String, Codable, Equatable, Sendable {
+    case publicAccess = "public"
+    case privateAccess = "private"
+}
+
 public struct CloudProvisioningIntent: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let generation: Int
     public let slug: String
+    public let visibility: CloudViewVisibility
     public let ownershipMarker: String
     public let remoteIDSeed: String
 
-    public init(generation: Int, ownershipMarker: String, remoteIDSeed: String) {
+    public init(
+        generation: Int,
+        visibility: CloudViewVisibility = .publicAccess,
+        ownershipMarker: String,
+        remoteIDSeed: String
+    ) {
         self.schemaVersion = Self.currentSchemaVersion
         self.generation = generation
         self.slug = CloudComputerName.slug(for: generation)
+        self.visibility = visibility
         self.ownershipMarker = ownershipMarker
         self.remoteIDSeed = remoteIDSeed
     }
@@ -39,19 +51,30 @@ public struct CloudProvisioningIntent: Codable, Equatable, Sendable {
         case schemaVersion
         case generation
         case slug
+        case visibility
         case ownershipMarker
         case remoteIDSeed
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        let decodedSchemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        guard decodedSchemaVersion == 1 || decodedSchemaVersion == Self.currentSchemaVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schemaVersion,
+                in: values,
+                debugDescription: "Unsupported Cloud provisioning receipt schema"
+            )
+        }
+        schemaVersion = Self.currentSchemaVersion
         generation = try values.decode(Int.self, forKey: .generation)
         slug = try values.decode(String.self, forKey: .slug)
+        visibility = decodedSchemaVersion == 1
+            ? .privateAccess
+            : try values.decode(CloudViewVisibility.self, forKey: .visibility)
         ownershipMarker = try values.decode(String.self, forKey: .ownershipMarker)
         remoteIDSeed = try values.decode(String.self, forKey: .remoteIDSeed)
-        guard schemaVersion == Self.currentSchemaVersion,
-              generation > 0,
+        guard generation > 0,
               slug == CloudComputerName.slug(for: generation),
               CloudMirrorHandle.is256BitHex(ownershipMarker),
               CloudMirrorHandle.is256BitHex(remoteIDSeed)
@@ -66,12 +89,13 @@ public struct CloudProvisioningIntent: Codable, Equatable, Sendable {
 }
 
 public struct CloudMirrorHandle: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let computerID: String
     public let slug: String
     public let generation: Int
+    public let visibility: CloudViewVisibility
     public let ownershipMarker: String
     public let remoteIDSeed: String
     public var ownershipEstablished: Bool
@@ -81,6 +105,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
         computerID: String,
         slug: String,
         generation: Int,
+        visibility: CloudViewVisibility = .publicAccess,
         ownershipMarker: String,
         remoteIDSeed: String,
         ownershipEstablished: Bool = false,
@@ -90,6 +115,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
         self.computerID = computerID
         self.slug = slug
         self.generation = generation
+        self.visibility = visibility
         self.ownershipMarker = ownershipMarker
         self.remoteIDSeed = remoteIDSeed
         self.ownershipEstablished = ownershipEstablished
@@ -101,6 +127,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
         case computerID
         case slug
         case generation
+        case visibility
         case ownershipMarker
         case remoteIDSeed
         case ownershipEstablished
@@ -110,17 +137,20 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let decodedSchemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
-        guard decodedSchemaVersion == Self.currentSchemaVersion else {
+        guard decodedSchemaVersion == 1 || decodedSchemaVersion == Self.currentSchemaVersion else {
             throw DecodingError.dataCorruptedError(
                 forKey: .schemaVersion,
                 in: values,
                 debugDescription: "Unsupported CloudMirrorHandle schema"
             )
         }
-        schemaVersion = decodedSchemaVersion
+        schemaVersion = Self.currentSchemaVersion
         computerID = try values.decode(String.self, forKey: .computerID)
         slug = try values.decode(String.self, forKey: .slug)
         generation = try values.decode(Int.self, forKey: .generation)
+        visibility = decodedSchemaVersion == 1
+            ? .privateAccess
+            : try values.decode(CloudViewVisibility.self, forKey: .visibility)
         ownershipMarker = try values.decode(String.self, forKey: .ownershipMarker)
         remoteIDSeed = try values.decode(String.self, forKey: .remoteIDSeed)
         ownershipEstablished = try values.decodeIfPresent(
@@ -134,7 +164,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
               slug == CloudComputerName.slug(for: generation),
               Self.is256BitHex(ownershipMarker),
               Self.is256BitHex(remoteIDSeed),
-              publicURL == nil || Self.isExpectedPrivateURL(publicURL, slug: slug)
+              publicURL == nil || Self.isExpectedCoolURL(publicURL, slug: slug)
         else {
             throw DecodingError.dataCorruptedError(
                 forKey: .computerID,
@@ -148,7 +178,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
         value.count == 64 && value.allSatisfy { $0.isHexDigit }
     }
 
-    fileprivate static func isExpectedPrivateURL(_ url: URL?, slug: String) -> Bool {
+    fileprivate static func isExpectedCoolURL(_ url: URL?, slug: String) -> Bool {
         guard let url,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme == "https",
@@ -169,7 +199,7 @@ public enum CloudMirrorError: Error, Equatable, Sendable {
     case unexpectedService
     case unsafeComputerConfiguration
     case computerMissing
-    case invalidPrivateURL
+    case invalidCloudURL
     case computerNotReady(String)
 
     public var userMessage: String {
@@ -179,11 +209,11 @@ public enum CloudMirrorError: Error, Equatable, Sendable {
         case .unexpectedService:
             "The saved Cool Computer is running an unexpected service. Nothing was changed."
         case .unsafeComputerConfiguration:
-            "The saved Cool Computer no longer has the required private, network-disabled configuration. Nothing was changed."
+            "The saved Cool Computer no longer has its required visibility and network-disabled configuration. Nothing was changed."
         case .computerMissing:
             "The saved Cool Computer no longer exists. Set up a new Cloud View explicitly."
-        case .invalidPrivateURL:
-            "Cool did not return the expected private Cloud View URL."
+        case .invalidCloudURL:
+            "Cool did not return the expected Cloud View URL."
         case let .computerNotReady(status):
             "The Cool Computer is not ready (\(CloudText.message(status)))."
         }
@@ -267,13 +297,14 @@ public actor CloudMirrorEngine {
             computerID: "pending",
             slug: intent.slug,
             generation: intent.generation,
+            visibility: intent.visibility,
             ownershipMarker: intent.ownershipMarker,
             remoteIDSeed: intent.remoteIDSeed
         )
         let bootstrap = try bootstrapCommand(for: provisional)
         let response = try await json([
             "create", intent.slug,
-            "--visibility", "private",
+            "--visibility", intent.visibility.rawValue,
             "--network", "none",
             "--command", bootstrap,
             "--port", String(Self.servicePort),
@@ -285,14 +316,15 @@ public actor CloudMirrorEngine {
         guard returnedSlug == intent.slug else {
             throw CoolCLIError.invalidResponse("computer.slug")
         }
-        guard computer["visibility"] as? String == "private",
+        guard computer["visibility"] as? String == intent.visibility.rawValue,
               (computer["network_policy"] as? [String: Any])?["mode"] as? String == "none"
-        else { throw CoolCLIError.invalidResponse("private computer configuration") }
+        else { throw CoolCLIError.invalidResponse("Cloud View computer configuration") }
 
         return CloudMirrorHandle(
             computerID: computerID,
             slug: intent.slug,
             generation: intent.generation,
+            visibility: intent.visibility,
             ownershipMarker: intent.ownershipMarker,
             remoteIDSeed: intent.remoteIDSeed
         )
@@ -312,6 +344,7 @@ public actor CloudMirrorEngine {
             computerID: computerID,
             slug: intent.slug,
             generation: intent.generation,
+            visibility: intent.visibility,
             ownershipMarker: intent.ownershipMarker,
             remoteIDSeed: intent.remoteIDSeed
         )
@@ -332,7 +365,7 @@ public actor CloudMirrorEngine {
         try await ensureRunning(computer, for: handle)
         try await verifyOwnershipEventually(handle)
         try await requireSuccess([
-            "share", "private", handle.computerID, "--json",
+            "share", handle.visibility.rawValue, handle.computerID, "--json",
         ], timeout: 15)
         try await requireSuccess([
             "files", "mkdir", handle.computerID, Self.remoteDirectory,
@@ -353,7 +386,7 @@ public actor CloudMirrorEngine {
             mode: "0644"
         )
         try await replaceBootstrapService(for: handle)
-        let url = try await privateURL(for: handle)
+        let url = try await cloudURL(for: handle)
         configured.publicURL = url
         return configured
     }
@@ -368,7 +401,7 @@ public actor CloudMirrorEngine {
         try await verifyOwnership(handle)
         resumed.ownershipEstablished = true
         try await requireSuccess([
-            "share", "private", handle.computerID, "--json",
+            "share", handle.visibility.rawValue, handle.computerID, "--json",
         ], timeout: 15)
         try await writeFile(
             computerID: handle.computerID,
@@ -377,7 +410,7 @@ public actor CloudMirrorEngine {
             mode: "0644"
         )
         try await ensureExpectedService(handle.computerID)
-        let url = try await privateURL(for: handle)
+        let url = try await cloudURL(for: handle)
         resumed.publicURL = url
         return resumed
     }
@@ -503,7 +536,7 @@ public actor CloudMirrorEngine {
         for handle: CloudMirrorHandle
     ) throws {
         try validateIdentity(computer, for: handle)
-        guard computer["visibility"] as? String == "private",
+        guard computer["visibility"] as? String == handle.visibility.rawValue,
               (computer["network_policy"] as? [String: Any])?["mode"] as? String == "none"
         else { throw CloudMirrorError.unsafeComputerConfiguration }
     }
@@ -593,14 +626,14 @@ public actor CloudMirrorEngine {
         ], timeout: 60)
     }
 
-    private func privateURL(for handle: CloudMirrorHandle) async throws -> URL {
+    private func cloudURL(for handle: CloudMirrorHandle) async throws -> URL {
         let response = try await json(["url", handle.computerID, "--json"], timeout: 15)
-        guard response["visibility"] as? String == "private",
+        guard response["visibility"] as? String == handle.visibility.rawValue,
               response["slug"] as? String == handle.slug,
               let value = response["public_url"] as? String,
               let url = URL(string: value),
-              CloudMirrorHandle.isExpectedPrivateURL(url, slug: handle.slug)
-        else { throw CloudMirrorError.invalidPrivateURL }
+              CloudMirrorHandle.isExpectedCoolURL(url, slug: handle.slug)
+        else { throw CloudMirrorError.invalidCloudURL }
         return url
     }
 

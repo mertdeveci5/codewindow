@@ -148,7 +148,7 @@ final class CloudViewController: ObservableObject {
             )
         case let .provisioning(step):
             CloudViewStatusPresentation(
-                title: "Creating private Cloud View",
+                title: "Creating Cloud View",
                 detail: step,
                 isWorking: true,
                 isError: false
@@ -156,7 +156,7 @@ final class CloudViewController: ObservableObject {
         case .recovering:
             CloudViewStatusPresentation(
                 title: "Reconnecting Cloud View",
-                detail: "Verifying the private computer",
+                detail: "Verifying the saved computer",
                 isWorking: true,
                 isError: false
             )
@@ -184,7 +184,7 @@ final class CloudViewController: ObservableObject {
         case .deleting:
             CloudViewStatusPresentation(
                 title: "Turning off Cloud View",
-                detail: "Deleting its private Cool Computer",
+                detail: "Deleting its Cool Computer",
                 isWorking: true,
                 isError: false
             )
@@ -265,7 +265,7 @@ final class CloudViewController: ObservableObject {
         guard phase == .awaitingConsent else { return }
         do {
             guard let engine = resolveEngine() else { throw CoolCLIError.missing }
-            phase = .provisioning("Checking the next private address")
+            phase = .provisioning("Checking the next public address")
             _ = try await engine.preflight()
 
             let localMinimum = max(1, defaults.integer(forKey: DefaultsKey.nextGeneration))
@@ -354,7 +354,7 @@ final class CloudViewController: ObservableObject {
         } catch {
             if error is CancellationError { return }
             if isAuthenticationError(error) {
-                phase = .pendingDeletion("Run cool login to finish deleting the private computer.")
+                phase = .pendingDeletion("Run cool login to finish deleting the Cloud View computer.")
             } else if error is CloudMirrorError {
                 phase = .needsRepair(errorMessage(error))
             } else {
@@ -616,7 +616,7 @@ final class CloudViewController: ObservableObject {
         using engine: CloudMirrorEngine,
         opensWhenReady: Bool
     ) async throws {
-        phase = .provisioning("Publishing the private live viewer")
+        phase = .provisioning("Publishing the public live viewer")
         let initial = try makeSnapshot(for: created)
         let configured = try await engine.configureNew(
             handle: created,
@@ -662,7 +662,7 @@ final class CloudViewController: ObservableObject {
             apply(originalError)
         } catch {
             if isAuthenticationError(error) {
-                phase = .pendingDeletion("Run cool login to finish deleting the private computer.")
+                phase = .pendingDeletion("Run cool login to finish deleting the Cloud View computer.")
             } else if error is CloudMirrorError {
                 phase = .needsRepair(errorMessage(error))
             } else {

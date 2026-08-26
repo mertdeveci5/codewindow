@@ -1,7 +1,7 @@
 # CodeWindow Cloud View
 
 Status: local implementation complete; authenticated app end-to-end and release validation pending
-Feature boundary agreed: private, read-only mirroring; agents keep running on the Mac
+Feature boundary agreed: public-link, read-only mirroring; agents keep running on the Mac
 Runtime dependency validated against: `cool 0.9.0`
 
 ## Checkpoint contract
@@ -14,9 +14,9 @@ Current checkpoint:
 | --- | --- | --- | --- |
 | P0 — product and architecture | Read-only mirror, split-view design, auth/privacy boundary, and non-goals agreed | Complete | This plan |
 | P1 — viewer design approval | Production-shaped local HTML viewer proves the split-view hierarchy, interaction, responsive behavior, and visual finish | Complete | User approved the direction; refined `index.html` now embeds the exact CodeWindow Codex, Claude, and Pi artwork and row language |
-| P2 — live CLI contract | Authenticated disposable Cool Computer proves private URL, writes, durable service, cold wake, and deletion | Partial | `cool 0.9.0`; disposable `meatproxyspike…` computers proved private/network-none create, private share, stdin file writes, startup ownership marker, bootstrap-to-stable service replacement, HTTPS URL, logged-out HTTP 302, and verified cleanup. Manual `cool stop` returned HTTP 409, so an actual cold wake remains unproven. |
+| P2 — live CLI contract | Authenticated disposable Cool Computer proves public URL, writes, durable service, cold wake, and deletion | Partial | `cool 0.9.0`; disposable `meatproxyspikepublic1` proved public/network-none creation, stdin file write, public share, canonical HTTPS URL, unauthenticated HTTP access, durable service, and verified deletion. Earlier spikes proved ownership bootstrap and service replacement. An actual cold wake remains unproven because manual `cool stop` returned HTTP 409. |
 | P3 — foundation | Snapshot DTO, CLI runner, typed errors, ownership handle, and fake-CLI tests pass | Complete | `Scripts/test.sh`: snapshot privacy, auth classification, exact CLI contract, bounded output, cancellation, recovery/ownership, missing-marker refusal, policy drift, and the existing regression groups pass. |
-| P4 — mirror lifecycle | Provision, publish, latest-wins, heartbeat, recovery, restart, and deletion pass with fakes | Implemented; live validation pending | Fake contract proves sequential naming, crash-safe provisioning receipt recovery, private provisioning, stopped-service restart, cold publish retry, marker mismatch/missing-marker refusal, auth fail-closed behavior, and deletion. Controller implements latest-wins, heartbeat, multi-stage backoff, wake recovery, pending deletion, and publish/delete serialization. |
+| P4 — mirror lifecycle | Provision, publish, latest-wins, heartbeat, recovery, restart, and deletion pass with fakes | Implemented; live validation pending | Fake contract proves sequential naming, crash-safe provisioning receipt recovery, public-by-default provisioning, legacy-private migration, stopped-service restart, cold publish retry, marker mismatch/missing-marker refusal, auth fail-closed behavior, and deletion. Controller implements latest-wins, heartbeat, multi-stage backoff, wake recovery, pending deletion, and publish/delete serialization. |
 | P5 — app integration | Approved viewer, consent, menus, packaging, and accessibility are wired to live snapshots | Complete locally | Universal app bundles the exact viewer; five consecutive smoke runs pass. Desktop/mobile Chromium checks have no console errors or external requests and Lighthouse reports 100 with zero failed audits. |
 | P6 — authenticated end-to-end | Real sessions update remotely, auth expiry fails closed, Mac offline is detected, and cleanup succeeds | Not run | Deliberately deferred to the explicit in-app consent flow; no production `meatproxyN` computer has been created. Cool login is ready and the first real generation will be `meatproxy1`. |
 | P7 — release readiness | Core tests, packaged smoke, integrations, universal build, signing, and documentation pass | Partial | Core tests, universal arm64/x86_64 ad-hoc package, exact resource hash, 20 consecutive current-architecture stress smokes plus five final universal smokes, agent-integration suite, and README pass. Developer ID signing, notarization, tag/release, and P6 remain pending. |
@@ -26,14 +26,14 @@ Checkpoint rules:
 - Update the table as each gate completes; do not mark later gates complete on the strength of mocked tests alone.
 - P1 is a hard visual approval gate. Do not provision remote infrastructure or wire the viewer into CodeWindow until the user approves the local prototype.
 - P2 happens before integration work so CodeWindow targets observed public CLI contracts rather than guessed response fields.
-- P6 must use the built CodeWindow app, an authenticated CLI, at least one real reporting agent, and a disposable private Cool Computer.
+- P6 must use the built CodeWindow app, an authenticated CLI, at least one real reporting agent, and a disposable public Cool Computer.
 - If implementation departs materially from the architecture, privacy allow-list, selected design, or non-goals, revise this plan and explicitly record the decision before continuing.
 - A failed cleanup leaves P5 failed until the remote computer is verified deleted.
 - Never paste authentication JSON, tokens, cookies, API keys, or the contents of Cool's configuration into this file.
 
 ## Decision
 
-CodeWindow will offer an opt-in **Cloud View** that mirrors its live session state to one private Cool Computer. The Mac remains the source of truth and continues to run every agent. The remote page is a viewer, not a second agent runtime.
+CodeWindow will offer an opt-in **Cloud View** that mirrors its live session state to one public-link Cool Computer. Anyone with the link can open the viewer, so the consent dialog must make that boundary explicit. The Mac remains the source of truth and continues to run every agent. The remote page is a viewer, not a second agent runtime.
 
 The viewer will use an **Apple Mail-style split view**:
 
@@ -63,12 +63,12 @@ The existing installer process helper is not suitable for Cool commands: it bloc
 1. Right-click CodeWindow and choose **Set Up Cloud View…**.
 2. CodeWindow verifies that a supported `cool` CLI exists and that `cool whoami --json` succeeds.
 3. CodeWindow presents a one-time disclosure of exactly what will leave the Mac.
-4. After confirmation, CodeWindow creates one private Cool Computer, publishes the viewer and first snapshot, and opens its HTTPS URL.
+4. After confirmation, CodeWindow creates one public Cool Computer, publishes the viewer and first snapshot, and opens its HTTPS URL.
 5. The same menu then offers:
    - **Open Cloud View**
    - **Copy Cloud View Link**
    - **Turn Off Cloud View…**
-6. Opening the private URL on another device requires the user's Cool login in that browser.
+6. Opening the public URL on another device requires only the link; Cool browser login is not required.
 
 ### What is mirrored
 
@@ -104,7 +104,7 @@ The page is a centered, dark split-view application rather than a dashboard grid
 │  Sessions                  │  Codex · codewindow                    ●     │
 │                            │  working                                     │
 │  ● Codex                   │                                              │
-│    codewindow              │  Add a private Cloud View                    │
+│    codewindow              │  Add a Cloud View                            │
 │    running command         │                                              │
 │                            │  › running command                           │
 │  ○ Claude                  │    swift test                                │
@@ -185,7 +185,7 @@ CloudViewController ── state, consent, persistence, heartbeat, latest-wins
 CoolCLIClient ── absolute executable + argument arrays + JSON contracts
           │
           ▼
-authenticated `cool` CLI ── private Cool Computer ── static HTTPS viewer
+authenticated `cool` CLI ── public-link Cool Computer ── static HTTPS viewer
 ```
 
 ### Ownership
@@ -240,7 +240,7 @@ Illustrative schema:
       "activity": "working",
       "projectLabel": "codewindow",
       "action": "runningCommand",
-      "taskPreview": "Add a private Cloud View",
+      "taskPreview": "Add a Cloud View",
       "actionPreview": "swift test",
       "updatedAt": "2026-08-26T12:34:55Z",
       "events": [
@@ -319,10 +319,10 @@ After preflight and explicit consent:
 1. Choose the next human-readable generation name: `meatproxy1`, `meatproxy2`, `meatproxy3`, and so on. Read the authenticated account's computer list, find the highest active `meatproxyN` suffix, compare it with a monotonic local generation counter, and use the next value. Persist the increment before creation so a failed attempt cannot accidentally reuse a generation. Disposable tests use a separate `meatproxyspike…` namespace.
 2. Generate a 256-bit ownership marker and remote-ID seed.
 3. Persist a provisioning receipt containing the exact generation, name, marker, and remote-ID seed before making the create request. This is not a credential.
-4. Run `cool create NAME --visibility private --network none --command BOOTSTRAP --port 8000 --json`. The bootstrap command creates the dedicated directory, writes a SHA-256 verifier for the marker outside the web root with mode `0600`, and starts the static service. The random marker itself remains local; passing the port is required by the live Cool API when a startup command is supplied.
+4. Run `cool create NAME --visibility public --network none --command BOOTSTRAP --port 8000 --json`. The bootstrap command creates the dedicated directory, writes a SHA-256 verifier for the marker outside the web root with mode `0600`, and starts the static service. The random marker itself remains local; passing the port is required by the live Cool API when a startup command is supplied.
 5. Persist the returned computer ID and name immediately as `provisioning`.
-6. Read `cool info ID --json`; require the exact ID/name, private visibility, and `network_policy.mode == none`. Then read and match the remote marker.
-7. Run `cool share private ID --json` to reassert privacy.
+6. Read `cool info ID --json`; require the exact ID/name, public visibility, and `network_policy.mode == none`. Then read and match the remote marker.
+7. Run `cool share public ID --json` to reassert the saved visibility.
 8. Run `cool files mkdir ID /home/runtime/codewindow --parents --mode 0755 --json` idempotently.
 9. Write the bundled viewer to `/home/runtime/codewindow/index.html` with mode `0644`.
 10. Write the initial snapshot to `/home/runtime/codewindow/state.json` with mode `0644` through stdin.
@@ -426,19 +426,19 @@ Use a temporary `CloudViewStatusRow` only during provisioning, recovery, or an a
 
 The first-use disclosure must say, in plain language:
 
-> CodeWindow will create a private Cool Computer and continuously send repository names, current task/action previews, and the sanitized activity shown in CodeWindow. Agents and terminals stay on this Mac. The view goes offline when this Mac does.
+> CodeWindow will create a public Cool Computer. Anyone with the link can view the repository names, current task/action previews, and sanitized activity sent by CodeWindow. Agents and terminals stay on this Mac. The view goes offline when this Mac does.
 
-Buttons: **Cancel** and **Create Private Cloud View**.
+Buttons: **Cancel** and **Create Public View**.
 
 The removal confirmation must state that it permanently deletes the dedicated Cool Computer and its mirrored state. It must not imply that local agents, hooks, or state are removed.
 
 ## Viewer security
 
-- Private visibility is specified at creation and reasserted before every provisioning/resume cycle.
+- Public visibility is specified for every new setup and reasserted before every provisioning/resume cycle.
+- Saved v0.1.24 handles and interrupted receipts migrate with explicit private visibility and remain private; updating the app never silently exposes an existing link.
 - Accept and open only HTTPS URLs returned by the typed Cool response.
-- No public-share command exists in the feature.
 - No query token or CodeWindow-created authentication secret is placed in the URL.
-- Browser access relies entirely on Cool's private browser authentication.
+- Anyone with the public link can read the bounded mirrored payload; creation, update, recovery, and deletion still require the authenticated local Cool CLI.
 - Add a restrictive Content Security Policy. The self-contained page may allow only its own inline bootstrap if necessary; it must disallow external scripts, frames, forms, and network destinations other than its own origin.
 - No external fonts, CDNs, analytics, crash reporting, or images.
 - Use `textContent`, fixed element creation, and enumerated class names; never interpolate remote data into markup or CSS.
@@ -454,11 +454,11 @@ The installed CLI is currently `cool 0.9.0`, but `cool whoami --json` presently 
 After the user runs `cool login`, perform a deliberately disposable spike before implementation:
 
 1. Assert `cool whoami --json` succeeds.
-2. Create one private, outbound-network-disabled computer with a short TTL such as 30 minutes.
-3. Capture and fixture the actual JSON contracts for create, info, share-private, mkdir, file write/read, service run/show/status, URL, start/stop, and delete.
-4. Serve a tiny fixture and verify the private URL from a logged-in desktop browser.
-5. Verify an unauthenticated/incognito browser cannot read it without Cool authentication.
-6. Verify the same private URL can be opened on a phone logged into the same Cool account.
+2. Create one public, outbound-network-disabled computer with a short TTL such as 30 minutes.
+3. Capture and fixture the actual JSON contracts for create, info, share-public, mkdir, file write/read, service run/show/status, URL, start/stop, and delete.
+4. Serve a tiny fixture and verify the public URL returns the viewer in an unauthenticated browser session.
+5. Verify the public URL contains no query credential and resolves only to the expected canonical hostname.
+6. Verify the same public URL can be opened on a phone without Cool browser login.
 7. Stop/archive the computer, open the URL, and verify the documented cold-wake behavior.
 8. Overwrite the state file repeatedly while polling and confirm the last-valid-snapshot strategy handles transient parse failures.
 9. Delete the computer with `cool delete ... --force --json` and verify it no longer resolves.
@@ -482,7 +482,8 @@ Cover at least:
 - Timeout, cancellation, nonzero exit, oversized output, and malformed JSON.
 - Provisioning order and rollback after failure at each step.
 - Ownership-marker success, missing marker, and mismatch.
-- Private visibility and `network none` are always requested.
+- Public visibility for new views and `network none` are always requested.
+- Legacy v0.1.24 handles decode as private and remain private across resume and re-encoding.
 - HTTPS-only URL validation.
 - Latest-wins serialization and update debounce.
 - Transient retry backoff and reset after success.
@@ -513,7 +514,8 @@ Extend the existing signed-app smoke path to verify:
 
 - Set up from a clean install with no prior defaults.
 - Confirm missing CLI and logged-out UX performs no mutations.
-- Set up while authenticated and confirm one private computer is created.
+- Set up while authenticated and confirm one public computer is created.
+- Open the link in a signed-out/private browser and confirm the viewer loads without Cool login.
 - Open and copy the link; test Mac, iPhone-size viewport, and a real phone.
 - Run Codex, Claude, and Pi simultaneously and confirm sidebar ordering, selection stability, and feed updates.
 - Confirm commands, long repository names, Unicode, attention states, and more than eight sessions remain legible.
@@ -543,7 +545,7 @@ Exit: the user approves the local viewer as the design that will be uploaded unc
 - Freeze the minimum CLI version and command decoder fields.
 - Do not patch RuntimeVM to make the spike pass; adapt CodeWindow to the supported public CLI.
 
-Exit: private static page, file updates, private browser auth, cold wake, and cleanup are proven through the installed CLI.
+Exit: public static page, unauthenticated link access, file updates, cold wake, and cleanup are proven through the installed CLI.
 
 ### Phase 3: snapshot and command foundation
 
@@ -608,7 +610,7 @@ It is deliberately not token-level streaming or terminal screen sharing. If an a
 The user-visible finished product consists of:
 
 1. A CodeWindow context-menu workflow for setup, open, copy link, retry, and verified removal.
-2. One dedicated private, outbound-network-disabled Cool Computer owned by a local marker.
+2. One dedicated public-link, outbound-network-disabled Cool Computer owned by a local marker.
 3. A dark, responsive Mail-style viewer with session navigation on the left and live sanitized detail on the right.
 4. Explicit live, reconnecting, empty, attention, stale, offline, unsupported-version, and failure states.
 5. Fail-closed authentication: missing CLI, unsupported CLI, logout, or expired auth can never fall through to remote mutation.
@@ -618,7 +620,7 @@ The user-visible finished product consists of:
 
 ### Product
 
-- A logged-in Cool user can create one private Cloud View from CodeWindow and view all current sessions remotely.
+- A logged-in Cool CLI user can create one public Cloud View from CodeWindow and share its link without requiring viewers to log in to Cool.
 - Desktop uses the selected split-view design; mobile provides clear list-to-detail navigation.
 - Session changes appear remotely within two seconds under normal connectivity.
 - A disconnected Mac is labelled offline within 90 seconds.
@@ -628,7 +630,8 @@ The user-visible finished product consists of:
 
 - With `cool` missing, outdated, or logged out, no Cool resource mutation is attempted.
 - CodeWindow invokes the CLI but never reads or stores Cool credentials.
-- The computer is private, has outbound networking disabled, and is ownership-marker verified before reuse or deletion.
+- New computers are public, have outbound networking disabled, and are ownership-marker verified before reuse or deletion.
+- Existing private Cloud Views remain private after updating CodeWindow.
 - A snapshot contains only the documented allow-list and never contains process data, operation keys, raw transcripts, or unbounded output.
 - Turning off deletes the dedicated remote computer, or clearly preserves a pending-deletion state until verified cleanup succeeds.
 
@@ -656,8 +659,8 @@ Every required row must be filled with Pass/Fail and concrete evidence at the en
 | --- | --- | --- | --- |
 | E01 | Logged-out preflight | Partial — fake call log stops after `whoami`; the live account was not logged out. | Yes |
 | E02 | Missing/old CLI | Partial — unsupported `0.8.9` fake stops before auth/mutation and missing-CLI UI is implemented; missing executable was not exercised in the packaged UI. | Yes |
-| E03 | First setup | Pending — consent and private/network-none command contract are implemented, but the real in-app setup has not been confirmed. | Yes |
-| E04 | Private access | Partial — disposable URL returned HTTP 302 without browser auth; authenticated desktop/mobile access remains pending. | Yes |
+| E03 | First setup | Pending — consent and public/network-none command contract are implemented, but the real in-app setup has not been confirmed. | Yes |
+| E04 | Public access | Partial — disposable `meatproxyspikepublic1` returned the expected fixture without cookies or Cool browser authentication and was deleted; a real mobile browser remains pending. | Yes |
 | E05 | Live update latency | Pending — requires the real in-app mirror and 20 measured events. | Yes |
 | E06 | Sidebar synchronization | Partial — responsive fixture selection is stable; real session start/end is pending. | Yes |
 | E07 | Detail synchronization | Partial — all event presentations render from the fixture; real no-reload updates are pending. | Yes |
@@ -726,7 +729,8 @@ The final handoff must summarize any failed or deferred row. Do not label the fe
 
 Decisions made:
 
-- V1 is a private, read-only live mirror and goes offline with the Mac.
+- V1 is a public-link, read-only live mirror and goes offline with the Mac.
+- New views default to public; previously saved private views remain private after migration.
 - The Mac remains the source of truth and all agents remain local.
 - The remote design uses a dark Apple Mail-style sidebar/detail layout.
 - The detail pane mirrors only CodeWindow's existing sanitized, bounded activity feed.
@@ -737,10 +741,10 @@ Assumptions to verify in Gate 0:
 
 - `cool 0.9.0` is the correct minimum version.
 - Current JSON response fields and durable-service recovery behavior match the locally inspected CLI source.
-- Cool private browser authentication works on the target mobile browser.
+- Cool public URLs load on the target mobile browser without Cool login.
 
 Open material product questions: none.
 
 Deferred decisions:
 
-- Remote execution, notifications, multiple Macs, and public sharing remain outside v1.
+- Remote execution, notifications, multiple Macs, and access-control modes beyond the migration-safe public default remain outside v1.

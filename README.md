@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.24-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.25-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -60,17 +60,19 @@ Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeW
 open -a CodeWindow
 ```
 
-## Private Cloud View
+## Public Cloud View
 
 Cloud View is an optional, read-only way to follow CodeWindow from another device. Install the
 `cool` CLI, run `cool login` in Terminal, then right-click the CodeWindow panel and choose **Set Up
 Cloud View…**. CodeWindow asks before creating anything.
 
-Each setup creates one dedicated private Cool Computer with the next sequential address, such as
-`https://meatproxy1.cool.computer`, then `meatproxy2`, and so on. The address is accepted only
-when the authenticated `cool` CLI returns the expected private URL. Agents still run entirely on
-the Mac; the remote computer only serves the viewer and the latest snapshot. The page shows an
-offline state if this Mac stops publishing.
+Each new setup creates one dedicated public Cool Computer with the next sequential address, such
+as `https://meatproxy1.cool.computer`, then `meatproxy2`, and so on. Anyone with that link can open
+the viewer without logging in to Cool. The address is accepted only when the authenticated local
+`cool` CLI returns the expected public URL. Agents still run entirely on the Mac; the remote
+computer only serves the viewer and the latest snapshot. The page shows an offline state if this
+Mac stops publishing. Cloud Views saved by version 0.1.24 remain private after updating rather
+than being silently made public.
 
 The viewer mirrors the agent type, activity, project folder name, bounded task/action previews,
 and up to 40 recent CodeWindow feed events per live session. It does not scan transcripts, copy

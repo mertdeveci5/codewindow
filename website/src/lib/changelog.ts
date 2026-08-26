@@ -8,6 +8,16 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.25",
+    date: "2026-08-26",
+    dateLabel: "Aug 26, 2026",
+    changes: [
+      "Makes newly created Cloud Views public so shared demo links open without a Cool browser login.",
+      "Keeps Cool CLI login, outbound-network isolation, ownership checks, redaction, and verified deletion in place.",
+      "Preserves private visibility for Cloud Views saved by version 0.1.24.",
+    ],
+  },
+  {
     version: "0.1.24",
     date: "2026-08-26",
     dateLabel: "Aug 26, 2026",
