@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.23",
+    date: "2026-08-26",
+    dateLabel: "Aug 26, 2026",
+    changes: [
+      "Adds a Dynamic Island-style top dock for notched and notchless displays.",
+      "Shows the latest agent action and active count at a glance, then unfolds into the full panel.",
+    ],
+  },
+  {
     version: "0.1.22",
     date: "2026-08-25",
     dateLabel: "Aug 25, 2026",
