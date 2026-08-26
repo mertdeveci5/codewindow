@@ -472,6 +472,10 @@ final class CloudViewController: ObservableObject {
         retryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
+            // `reconnect()` cancels any still-scheduled retry as part of resetting
+            // background work. Clear this completed delay first so it cannot cancel
+            // the task that is now performing the reconnect.
+            self?.retryTask = nil
             await self?.reconnect()
         }
     }

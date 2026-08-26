@@ -134,10 +134,7 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
               slug == CloudComputerName.slug(for: generation),
               Self.is256BitHex(ownershipMarker),
               Self.is256BitHex(remoteIDSeed),
-              publicURL == nil || (
-                publicURL?.scheme == "https"
-                    && publicURL?.host == "\(slug).cool.computer"
-              )
+              publicURL == nil || Self.isExpectedPrivateURL(publicURL, slug: slug)
         else {
             throw DecodingError.dataCorruptedError(
                 forKey: .computerID,
@@ -149,6 +146,21 @@ public struct CloudMirrorHandle: Codable, Equatable, Sendable {
 
     fileprivate static func is256BitHex(_ value: String) -> Bool {
         value.count == 64 && value.allSatisfy { $0.isHexDigit }
+    }
+
+    fileprivate static func isExpectedPrivateURL(_ url: URL?, slug: String) -> Bool {
+        guard let url,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "https",
+              components.host == "\(slug).cool.computer",
+              components.user == nil,
+              components.password == nil,
+              components.port == nil,
+              components.percentEncodedQuery == nil,
+              components.fragment == nil,
+              components.percentEncodedPath.isEmpty || components.percentEncodedPath == "/"
+        else { return false }
+        return true
     }
 }
 
@@ -221,6 +233,9 @@ public actor CloudMirrorEngine {
     }
 
     public func nextGeneration(localMinimum: Int) async throws -> Int {
+        guard localMinimum > 0, localMinimum < Int.max else {
+            throw CoolCLIError.invalidResponse("computer generation")
+        }
         let response = try await json(["list", "--json"], timeout: 15)
         let computers = response["computers"] as? [[String: Any]] ?? []
         let remoteMaximum = computers.compactMap { computer -> Int? in
@@ -584,8 +599,7 @@ public actor CloudMirrorEngine {
               response["slug"] as? String == handle.slug,
               let value = response["public_url"] as? String,
               let url = URL(string: value),
-              url.scheme == "https",
-              url.host == "\(handle.slug).cool.computer"
+              CloudMirrorHandle.isExpectedPrivateURL(url, slug: handle.slug)
         else { throw CloudMirrorError.invalidPrivateURL }
         return url
     }

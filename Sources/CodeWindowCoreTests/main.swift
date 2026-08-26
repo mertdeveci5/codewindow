@@ -1404,9 +1404,29 @@ func testCoolAuthenticationFailure() throws {
         CoolJSON.failure(from: result) == .authenticationRequired,
         "Cool login failure was not classified"
     )
+    let stdoutResult = CoolCommandResult(exitCode: 1, stdout: errorData, stderr: Data())
+    try require(
+        CoolJSON.failure(from: stdoutResult) == .authenticationRequired,
+        "Cool login failure on stdout was not classified"
+    )
 }
 
 func testCloudMirrorContract() async throws {
+    let invalidGenerationRunner = ScriptedCoolRunner(steps: [])
+    let invalidGenerationEngine = CloudMirrorEngine(
+        runner: invalidGenerationRunner,
+        viewerHTML: Data("viewer".utf8)
+    )
+    do {
+        _ = try await invalidGenerationEngine.nextGeneration(localMinimum: .max)
+        throw TestFailure.assertion("An overflowing Cloud generation was accepted")
+    } catch CoolCLIError.invalidResponse {}
+    let invalidGenerationCalls = await invalidGenerationRunner.recordedCalls()
+    try require(
+        invalidGenerationCalls.isEmpty,
+        "An invalid Cloud generation reached the CLI"
+    )
+
     let computerID = "computer-test-10"
     let marker = "owner-marker"
     let seed = "remote-seed"
@@ -1753,6 +1773,21 @@ func testCloudFailClosedSafety() async throws {
     ]
     let markerJSON = cloudMarkerJSON(slug: "meatproxy7", marker: marker)
 
+    let unsafeURLHandle = try JSONSerialization.data(withJSONObject: [
+        "schemaVersion": CloudMirrorHandle.currentSchemaVersion,
+        "computerID": computerID,
+        "slug": "meatproxy7",
+        "generation": 7,
+        "ownershipMarker": String(repeating: "a", count: 64),
+        "remoteIDSeed": String(repeating: "b", count: 64),
+        "ownershipEstablished": true,
+        "publicURL": "https://viewer@meatproxy7.cool.computer/private",
+    ])
+    do {
+        _ = try JSONDecoder().decode(CloudMirrorHandle.self, from: unsafeURLHandle)
+        throw TestFailure.assertion("A non-canonical private URL was persisted")
+    } catch is DecodingError {}
+
     let missingMarkerRunner = ScriptedCoolRunner(steps: try [
         CoolTestStep(
             arguments: ["info", computerID, "--json"],
@@ -1917,10 +1952,17 @@ func testCoolRunnerCancellationAndOutputLimit() async throws {
         throw TestFailure.assertion("Shutting down the Cool runner left a command alive")
     } catch is CancellationError {}
 
-    let outputClient = CoolCLIClient(executableURL: URL(fileURLWithPath: "/usr/bin/yes"))
+    let outputClient = CoolCLIClient(executableURL: URL(fileURLWithPath: "/usr/bin/perl"))
     let outputStarted = Date()
     do {
-        _ = try await outputClient.run(arguments: [], stdin: nil, timeout: 5)
+        _ = try await outputClient.run(
+            arguments: [
+                "-e",
+                "print STDOUT 'a' x 1200000; print STDERR 'b' x 1200000;",
+            ],
+            stdin: nil,
+            timeout: 5
+        )
         throw TestFailure.assertion("Unbounded Cool output completed successfully")
     } catch CoolCLIError.outputTooLarge {}
     try require(

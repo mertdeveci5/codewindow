@@ -298,10 +298,15 @@ public enum CoolJSON {
     }
 
     public static func failure(from result: CoolCommandResult) -> CoolCLIError {
-        let object = (try? JSONSerialization.jsonObject(with: result.stderr)) as? [String: Any]
+        let objects = [result.stderr, result.stdout].compactMap {
+            (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        }
+        if objects.contains(where: { $0["code"] as? String == "authentication_required" }) {
+            return .authenticationRequired
+        }
+        let object = objects.first
         let code = object?["code"] as? String ?? "command_failed"
         let message = object?["error"] as? String ?? "cool exited with status \(result.exitCode)"
-        if code == "authentication_required" { return .authenticationRequired }
         return .commandFailed(code: code, message: message, exitCode: result.exitCode)
     }
 
@@ -410,12 +415,13 @@ private final class CoolCapturedOutput: @unchecked Sendable {
     ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        guard standardOutput.count + standardError.count + data.count <= maximumBytes else {
+            return false
+        }
         switch stream {
         case .standardOutput:
-            guard standardOutput.count + data.count <= maximumBytes else { return false }
             standardOutput.append(data)
         case .standardError:
-            guard standardError.count + data.count <= maximumBytes else { return false }
             standardError.append(data)
         }
         return true

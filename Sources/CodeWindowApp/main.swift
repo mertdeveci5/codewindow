@@ -192,6 +192,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.setFrameOrigin(originalOrigin)
                 let momentumMoveWorks = smokeTestMomentumMovement(of: panel, from: originalOrigin)
                 let topDockWorks = smokeTestTopDockInteraction(of: panel)
+                let terminalAutoHideWorks = Self.shouldHidePanel(
+                    isManuallyHidden: false,
+                    frontmostApplicationOwnsSession: true
+                ) && !Self.shouldHidePanel(
+                    isManuallyHidden: false,
+                    frontmostApplicationOwnsSession: false
+                )
                 // Named checks rather than one conjunction: a failing run has to say which
                 // check failed, or the next person reads `false` and starts guessing.
                 let checks: [(name: String, passed: Bool)] = [
@@ -210,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("trackpad", trackpadMoveWorks),
                     ("momentum", momentumMoveWorks),
                     ("topDock", topDockWorks),
+                    ("terminalAutoHide", terminalAutoHideWorks),
                     ("overflowInteraction", overflowInteractionWorks),
                     ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
                     ("hoverIntent", hoverIntentWorks),
@@ -567,10 +575,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updatePanelVisibility() {
         guard let panel, let store else { return }
-        // A docked panel is part of the screen furniture: it stays put over the terminal
-        // that owns the session. Only the floating panel gets out of the way.
-        let shouldHide = isManuallyHidden
-            || (dock?.isDocked != true && frontmostApplicationOwnsSession(store.sessions))
+        let shouldHide = Self.shouldHidePanel(
+            isManuallyHidden: isManuallyHidden,
+            frontmostApplicationOwnsSession: frontmostApplicationOwnsSession(store.sessions)
+        )
         if shouldHide {
             inspector?.dismissImmediately()
             if panel.isVisible {
@@ -579,6 +587,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !shouldHide, !panel.isVisible {
             panel.orderFrontRegardless()
         }
+    }
+
+    nonisolated private static func shouldHidePanel(
+        isManuallyHidden: Bool,
+        frontmostApplicationOwnsSession: Bool
+    ) -> Bool {
+        isManuallyHidden || frontmostApplicationOwnsSession
     }
 
     private func frontmostApplicationOwnsSession(_ sessions: [PresentedSession]) -> Bool {

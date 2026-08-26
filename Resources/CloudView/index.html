@@ -1238,6 +1238,9 @@
         updateConnection();
         const sessions = snapshot?.sessions || [];
         sessionCount.textContent = String(sessions.length);
+        if (!sessions.length && window.matchMedia("(max-width: 719px)").matches) {
+          setMobileView("detail");
+        }
 
         if (selectedID && !sessions.some((session) => session.id === selectedID)) selectedID = null;
         if (!selectedID && sessions.length) selectedID = sessions[0].id;

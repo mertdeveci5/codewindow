@@ -14,6 +14,7 @@ export const CHANGELOG = [
     changes: [
       "Adds an optional private Cloud View for following live agent sessions from another device.",
       "Mirrors a privacy-bounded activity feed through a dedicated Cool Computer named meatproxy1, meatproxy2, and so on.",
+      "Hides both the floating panel and docked island while you are in the terminal that owns the session.",
     ],
   },
   {
