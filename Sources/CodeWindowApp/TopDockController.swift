@@ -34,6 +34,11 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     /// True while this controller is the one moving the panel, so its own frame changes
     /// are not mistaken for a user drag.
     private var isApplyingLayout = false
+    /// SwiftUI can report a new measured size from inside AppKit's animated-resize run loop.
+    /// Starting a second NSWindow animation there is unsafe, so settle it after the active
+    /// frame application returns.
+    private var hasDeferredMeasurementLayout = false
+    private var deferredMeasurementLayoutAnimated = false
     private var isDragging = false
     private var dragStartFrame: NSRect?
     private var fullContentSize = CGSize(
@@ -84,13 +89,22 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     func fullContentSizeChanged(to size: CGSize) {
         guard size.width > 0, size.height > 0, size != fullContentSize else { return }
         fullContentSize = size
-        layout(animated: model.isDocked && model.isUnfolded)
+        layoutAfterMeasurement(animated: model.isDocked && model.isUnfolded)
     }
 
     func capsuleContentSizeChanged(to size: CGSize) {
         guard size.width > 0, size.height > 0, size != capsuleContentSize else { return }
         capsuleContentSize = size
-        layout(animated: model.isDocked && !model.isUnfolded)
+        layoutAfterMeasurement(animated: model.isDocked && !model.isUnfolded)
+    }
+
+    private func layoutAfterMeasurement(animated: Bool) {
+        guard isApplyingLayout else {
+            layout(animated: animated)
+            return
+        }
+        hasDeferredMeasurementLayout = true
+        deferredMeasurementLayoutAnimated = deferredMeasurementLayoutAnimated || animated
     }
 
     func layout(animated: Bool = false) {
@@ -131,7 +145,14 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         let visibleFrame = screen.visibleFrame
         let maximumHeight = visibleFrame.height - PanelMetrics.screenMargin * 2
         let height = min(ceil(fullContentSize.height), maximumHeight)
-        let topLeft = pendingFloatingTopLeft ?? NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        let currentTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        // A size measurement can arrive while AppKit is still visually animating a
+        // menu-driven detach. Use the remembered floating anchor instead of treating an
+        // intermediate animation frame as the new home. During a real drag, the pointer's
+        // current frame remains authoritative and is persisted when the drag ends.
+        let topLeft = isDragging
+            ? currentTopLeft
+            : (pendingFloatingTopLeft ?? storedFloatingTopLeft() ?? currentTopLeft)
         pendingFloatingTopLeft = nil
         var frame = NSRect(
             x: topLeft.x,
@@ -169,6 +190,14 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         panel.setFrame(frame, display: true, animate: animates)
         panel.invalidateShadow()
         isApplyingLayout = false
+        if hasDeferredMeasurementLayout {
+            let deferredAnimation = deferredMeasurementLayoutAnimated
+            hasDeferredMeasurementLayout = false
+            deferredMeasurementLayoutAnimated = false
+            DispatchQueue.main.async { [weak self] in
+                self?.layout(animated: deferredAnimation)
+            }
+        }
     }
 
     // MARK: - Mode

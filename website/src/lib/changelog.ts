@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.24",
+    date: "2026-08-26",
+    dateLabel: "Aug 26, 2026",
+    changes: [
+      "Adds an optional private Cloud View for following live agent sessions from another device.",
+      "Mirrors a privacy-bounded activity feed through a dedicated Cool Computer named meatproxy1, meatproxy2, and so on.",
+    ],
+  },
+  {
     version: "0.1.23",
     date: "2026-08-26",
     dateLabel: "Aug 26, 2026",

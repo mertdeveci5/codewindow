@@ -1,5 +1,7 @@
 @testable import CodeWindowCore
+import CodeWindowCloud
 import CoreGraphics
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -20,6 +22,13 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
 func unwrap<T>(_ value: T?, _ message: String) throws -> T {
     guard let value else { throw TestFailure.assertion(message) }
     return value
+}
+
+func cloudMarkerJSON(slug: String, marker: String) -> String {
+    let digest = SHA256.hash(data: Data(marker.utf8))
+        .map { String(format: "%02x", $0) }
+        .joined()
+    return "{\"markerDigest\":\"\(digest)\",\"schemaVersion\":1,\"slug\":\"\(slug)\"}"
 }
 
 func temporaryDirectory() throws -> URL {
@@ -1275,6 +1284,651 @@ func readJSON(_ url: URL) throws -> [String: Any] {
     try unwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any], "Invalid JSON at \(url.path)")
 }
 
+private struct CoolTestStep: Sendable {
+    let arguments: [String]
+    let result: CoolCommandResult
+}
+
+private struct CoolRecordedCall: Sendable {
+    let arguments: [String]
+    let stdin: Data?
+}
+
+private actor ScriptedCoolRunner: CoolCommandRunning {
+    private var steps: [CoolTestStep]
+    private var calls: [CoolRecordedCall] = []
+
+    init(steps: [CoolTestStep]) {
+        self.steps = steps
+    }
+
+    func run(
+        arguments: [String],
+        stdin: Data?,
+        timeout: TimeInterval
+    ) async throws -> CoolCommandResult {
+        guard !steps.isEmpty else {
+            throw TestFailure.assertion("Unexpected cool call: \(arguments.joined(separator: " "))")
+        }
+        let step = steps.removeFirst()
+        guard step.arguments == arguments else {
+            throw TestFailure.assertion(
+                "Cool arguments mismatch after \(calls.map(\.arguments)). Expected \(step.arguments), received \(arguments)"
+            )
+        }
+        calls.append(CoolRecordedCall(arguments: arguments, stdin: stdin))
+        return step.result
+    }
+
+    func recordedCalls() -> [CoolRecordedCall] { calls }
+    func remainingSteps() -> Int { steps.count }
+}
+
+private func coolResult(_ object: [String: Any]) throws -> CoolCommandResult {
+    var response = object
+    response["success"] = true
+    return CoolCommandResult(
+        exitCode: 0,
+        stdout: try JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]),
+        stderr: Data()
+    )
+}
+
+private func rawCoolResult(_ value: String) -> CoolCommandResult {
+    CoolCommandResult(exitCode: 0, stdout: Data(value.utf8), stderr: Data())
+}
+
+private func failedCoolResult(code: String, message: String) throws -> CoolCommandResult {
+    CoolCommandResult(
+        exitCode: 1,
+        stdout: Data(),
+        stderr: try JSONSerialization.data(withJSONObject: [
+            "success": false,
+            "code": code,
+            "error": message,
+        ], options: [.sortedKeys])
+    )
+}
+
+func testCloudSnapshotPrivacy() throws {
+    let events = (0..<45).map { index in
+        CloudEventSnapshot(
+            id: "event-\(index)",
+            kind: .assistant,
+            text: "Bearer secret-token-123456789 response \(index)\u{0007}",
+            detail: "api_key=another-secret-123456789",
+            succeeded: nil
+        )
+    }
+    let session = CloudSessionSnapshot(
+        id: "remote-session",
+        agent: .codex,
+        activity: .working,
+        projectLabel: "codewindow\u{0001}",
+        action: .runningCommand,
+        taskPreview: "Investigate ghp_abcdefghijklmnopqrstuvwxyz123456",
+        actionPreview: "swift test",
+        updatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        events: events
+    )
+    try require(session.events.count == SessionFeed.maximumEvents, "Cloud feed exceeded its event cap")
+    try require(session.projectLabel == "codewindow", "Cloud project retained control characters")
+
+    let data = try CloudSnapshotEncoder.encode(CloudSnapshot(revision: 7, sessions: [session]))
+    let encoded = String(decoding: data, as: UTF8.self)
+    try require(data.count <= CloudSnapshotEncoder.maximumBytes, "Cloud snapshot exceeded byte cap")
+    try require(!encoded.contains("secret-token"), "Cloud snapshot retained bearer credentials")
+    try require(!encoded.contains("another-secret"), "Cloud snapshot retained API credentials")
+    try require(!encoded.contains("ghp_"), "Cloud snapshot retained GitHub credentials")
+    try require(encoded.contains("[redacted]"), "Cloud snapshot did not mark redacted credentials")
+    try require(
+        CloudIdentifier.derived(seed: "seed", localID: "local")
+            == CloudIdentifier.derived(seed: "seed", localID: "local"),
+        "Cloud session identifiers were not stable"
+    )
+    try require(
+        CloudIdentifier.derived(seed: "seed", localID: "local")
+            != CloudIdentifier.derived(seed: "other", localID: "local"),
+        "Cloud session identifiers ignored their private seed"
+    )
+}
+
+func testCoolAuthenticationFailure() throws {
+    let errorData = try JSONSerialization.data(withJSONObject: [
+        "success": false,
+        "code": "authentication_required",
+        "error": "please log in",
+    ])
+    let result = CoolCommandResult(exitCode: 1, stdout: Data(), stderr: errorData)
+    try require(
+        CoolJSON.failure(from: result) == .authenticationRequired,
+        "Cool login failure was not classified"
+    )
+}
+
+func testCloudMirrorContract() async throws {
+    let computerID = "computer-test-10"
+    let marker = "owner-marker"
+    let seed = "remote-seed"
+    let viewer = Data("<html>viewer</html>".utf8)
+    let initial = Data("{\"revision\":1}".utf8)
+    let published = Data("{\"revision\":2}".utf8)
+    let privateComputer: [String: Any] = [
+        "id": computerID,
+        "slug": "meatproxy10",
+        "visibility": "private",
+        "status": "running",
+        "network_policy": ["mode": "none"],
+    ]
+    let markerJSON = cloudMarkerJSON(slug: "meatproxy10", marker: marker)
+    let bootstrap = "/bin/bash -lc 'umask 077; install -d -m 0755 \(CloudMirrorEngine.remoteDirectory); printf %s \(Data(markerJSON.utf8).base64EncodedString()) | base64 --decode > \(CloudMirrorEngine.markerPath); chmod 0600 \(CloudMirrorEngine.markerPath); exec \(CloudMirrorEngine.serviceCommand)'"
+
+    let steps = try [
+        CoolTestStep(arguments: ["--version"], result: rawCoolResult("cool 0.9.0\n")),
+        CoolTestStep(arguments: ["whoami", "--json"], result: coolResult(["authenticated": true])),
+        CoolTestStep(arguments: ["list", "--json"], result: coolResult(["computers": [
+            ["slug": "meatproxy2"],
+            ["slug": "meatproxy9"],
+            ["slug": "meatproxyspike99"],
+            ["slug": "codewindow99"],
+        ]])),
+        CoolTestStep(
+            arguments: [
+                "create", "meatproxy10", "--visibility", "private",
+                "--network", "none", "--command", bootstrap,
+                "--port", "8000", "--json",
+            ],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+        CoolTestStep(
+            arguments: ["share", "private", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "mkdir", computerID, CloudMirrorEngine.remoteDirectory,
+                "--parents", "--mode", "0755", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.viewerPath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.statePath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["service", "show", computerID, "--json"],
+            result: coolResult(["service": [
+                "configured": true,
+                "port": CloudMirrorEngine.servicePort,
+                "command": bootstrap,
+                "status": "running",
+            ]])
+        ),
+        CoolTestStep(
+            arguments: [
+                "service", "run", "--json", computerID, "--port", "8000", "--",
+                "python3", "-m", "http.server", "8000", "--directory",
+                CloudMirrorEngine.remoteDirectory,
+            ],
+            result: coolResult(["service": ["configured": true]])
+        ),
+        CoolTestStep(
+            arguments: ["url", computerID, "--json"],
+            result: coolResult([
+                "visibility": "private",
+                "slug": "meatproxy10",
+                "public_url": "https://meatproxy10.cool.computer",
+            ])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.statePath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+        CoolTestStep(
+            arguments: ["delete", computerID, "--force", "--json"],
+            result: coolResult([:])
+        ),
+    ]
+    let runner = ScriptedCoolRunner(steps: steps)
+    let engine = CloudMirrorEngine(runner: runner, viewerHTML: viewer)
+
+    _ = try await engine.preflight()
+    let generation = try await engine.nextGeneration(localMinimum: 3)
+    try require(generation == 10, "Cloud generation was not monotonic")
+    let handle = try await engine.createHandle(
+        generation: generation,
+        ownershipMarker: marker,
+        remoteIDSeed: seed
+    )
+    try require(handle.slug == "meatproxy10", "Cloud computer used the wrong sequential slug")
+    try require(!handle.ownershipEstablished, "Cloud ownership was persisted before its marker was verified")
+    let configured = try await engine.configureNew(handle: handle, initialSnapshot: initial)
+    try require(configured.ownershipEstablished, "Cloud ownership marker was not recorded")
+    try require(
+        configured.publicURL?.absoluteString == "https://meatproxy10.cool.computer",
+        "Cloud URL did not come from the expected private Cool hostname"
+    )
+    try await engine.publish(published, to: configured)
+    try await engine.deleteVerified(configured)
+
+    let calls = await runner.recordedCalls()
+    let remainingSteps = await runner.remainingSteps()
+    try require(remainingSteps == 0, "Cloud contract left scripted CLI calls unused")
+    let writes = calls.filter { $0.arguments.starts(with: ["files", "write"]) }
+    try require(writes.count == 3, "Cloud contract wrote an unexpected number of files")
+    try require(writes[0].stdin == viewer, "Cloud viewer payload changed")
+    try require(writes[1].stdin == initial, "Initial cloud snapshot payload changed")
+    try require(writes[2].stdin == published, "Live cloud snapshot payload changed")
+}
+
+func testCloudRecoveryAndOwnership() async throws {
+    let computerID = "computer-recovery"
+    let marker = "recovery-marker"
+    let markerJSON = cloudMarkerJSON(slug: "meatproxy4", marker: marker)
+    let handle = CloudMirrorHandle(
+        computerID: computerID,
+        slug: "meatproxy4",
+        generation: 4,
+        ownershipMarker: marker,
+        remoteIDSeed: "seed",
+        ownershipEstablished: true
+    )
+    let steps = try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": [
+                "id": computerID,
+                "slug": "meatproxy4",
+                "visibility": "private",
+                "status": "cold",
+                "network_policy": ["mode": "none"],
+            ]])
+        ),
+        CoolTestStep(
+            arguments: ["start", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+        CoolTestStep(
+            arguments: ["share", "private", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.viewerPath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["service", "show", computerID, "--json"],
+            result: coolResult(["service": [
+                "configured": true,
+                "port": CloudMirrorEngine.servicePort,
+                "command": CloudMirrorEngine.serviceCommand,
+                "status": "stopped",
+            ]])
+        ),
+        CoolTestStep(
+            arguments: ["service", "restart", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["url", computerID, "--json"],
+            result: coolResult([
+                "visibility": "private",
+                "slug": "meatproxy4",
+                "public_url": "https://meatproxy4.cool.computer",
+            ])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.statePath,
+                "--mode", "0644", "--json",
+            ],
+            result: failedCoolResult(code: "api_error", message: "computer is cold")
+        ),
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": [
+                "id": computerID,
+                "slug": "meatproxy4",
+                "visibility": "private",
+                "status": "cold",
+                "network_policy": ["mode": "none"],
+            ]])
+        ),
+        CoolTestStep(
+            arguments: ["start", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.statePath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+    ]
+    let runner = ScriptedCoolRunner(steps: steps)
+    let engine = CloudMirrorEngine(runner: runner, viewerHTML: Data("viewer".utf8))
+    let resumed = try await engine.resume(handle)
+    try require(
+        resumed.publicURL?.absoluteString == "https://meatproxy4.cool.computer",
+        "Cold Cloud View did not resume its private URL"
+    )
+    try await engine.publish(Data("newest".utf8), to: resumed)
+    let remainingSteps = await runner.remainingSteps()
+    try require(remainingSteps == 0, "Cloud recovery skipped expected start or service repair calls")
+
+    let mismatchSteps = try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": [
+                "id": computerID,
+                "slug": "meatproxy4",
+                "visibility": "private",
+                "status": "running",
+                "network_policy": ["mode": "none"],
+            ]])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult("{\"schemaVersion\":1,\"slug\":\"meatproxy4\",\"markerDigest\":\"someone-else\"}")
+        ),
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": [
+                "id": computerID,
+                "slug": "meatproxy4",
+                "visibility": "private",
+                "status": "running",
+                "network_policy": ["mode": "none"],
+            ]])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult("{\"schemaVersion\":1,\"slug\":\"meatproxy4\",\"markerDigest\":\"someone-else\"}")
+        ),
+    ]
+    let mismatchRunner = ScriptedCoolRunner(steps: mismatchSteps)
+    let mismatchEngine = CloudMirrorEngine(runner: mismatchRunner, viewerHTML: Data("viewer".utf8))
+    do {
+        _ = try await mismatchEngine.resume(handle)
+        throw TestFailure.assertion("Ownership mismatch was allowed to resume")
+    } catch CloudMirrorError.ownershipMismatch {}
+    do {
+        try await mismatchEngine.deleteVerified(handle)
+        throw TestFailure.assertion("Ownership mismatch was allowed to delete")
+    } catch CloudMirrorError.ownershipMismatch {}
+    let mismatchRemainingSteps = await mismatchRunner.remainingSteps()
+    try require(mismatchRemainingSteps == 0, "Ownership mismatch issued an unexpected write or delete")
+}
+
+func testCloudLoggedOutPreflight() async throws {
+    let steps = try [
+        CoolTestStep(arguments: ["--version"], result: rawCoolResult("cool 0.9.0\n")),
+        CoolTestStep(
+            arguments: ["whoami", "--json"],
+            result: failedCoolResult(
+                code: "authentication_required",
+                message: "not logged in; run cool login"
+            )
+        ),
+    ]
+    let runner = ScriptedCoolRunner(steps: steps)
+    let engine = CloudMirrorEngine(runner: runner, viewerHTML: Data("viewer".utf8))
+    do {
+        _ = try await engine.preflight()
+        throw TestFailure.assertion("Logged-out Cool preflight succeeded")
+    } catch CoolCLIError.authenticationRequired {}
+    let calls = await runner.recordedCalls()
+    try require(calls.count == 2, "Logged-out preflight attempted a resource mutation")
+
+    let oldRunner = ScriptedCoolRunner(steps: [
+        CoolTestStep(arguments: ["--version"], result: rawCoolResult("cool 0.8.9\n")),
+    ])
+    let oldEngine = CloudMirrorEngine(runner: oldRunner, viewerHTML: Data("viewer".utf8))
+    do {
+        _ = try await oldEngine.preflight()
+        throw TestFailure.assertion("Unsupported Cool version passed preflight")
+    } catch CoolCLIError.unsupportedVersion {}
+    let oldCalls = await oldRunner.recordedCalls()
+    try require(oldCalls.count == 1, "Unsupported Cool version attempted authentication or mutation")
+}
+
+func testCloudFailClosedSafety() async throws {
+    let computerID = "computer-safe"
+    let marker = "safety-marker"
+    let handle = CloudMirrorHandle(
+        computerID: computerID,
+        slug: "meatproxy7",
+        generation: 7,
+        ownershipMarker: marker,
+        remoteIDSeed: "seed",
+        ownershipEstablished: true
+    )
+    let privateComputer: [String: Any] = [
+        "id": computerID,
+        "slug": "meatproxy7",
+        "visibility": "private",
+        "status": "running",
+        "network_policy": ["mode": "none"],
+    ]
+    let markerJSON = cloudMarkerJSON(slug: "meatproxy7", marker: marker)
+
+    let missingMarkerRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: failedCoolResult(code: "api_error", message: "404 file not found")
+        ),
+    ])
+    let missingMarkerEngine = CloudMirrorEngine(
+        runner: missingMarkerRunner,
+        viewerHTML: Data("viewer".utf8)
+    )
+    do {
+        try await missingMarkerEngine.deleteVerified(handle)
+        throw TestFailure.assertion("A missing ownership marker was treated as a deleted computer")
+    } catch CloudMirrorError.ownershipMismatch {}
+    let missingMarkerRemaining = await missingMarkerRunner.remainingSteps()
+    try require(
+        missingMarkerRemaining == 0,
+        "Missing-marker deletion issued an unexpected delete"
+    )
+
+    let missingComputerRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: failedCoolResult(code: "api_error", message: "404 computer not found")
+        ),
+    ])
+    let missingComputerEngine = CloudMirrorEngine(
+        runner: missingComputerRunner,
+        viewerHTML: Data("viewer".utf8)
+    )
+    try await missingComputerEngine.deleteVerified(handle)
+    let missingComputerRemaining = await missingComputerRunner.remainingSteps()
+    try require(
+        missingComputerRemaining == 0,
+        "Missing-computer deletion was not idempotent"
+    )
+
+    let authRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+        CoolTestStep(
+            arguments: ["share", "private", computerID, "--json"],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: [
+                "files", "write", computerID, CloudMirrorEngine.viewerPath,
+                "--mode", "0644", "--json",
+            ],
+            result: coolResult([:])
+        ),
+        CoolTestStep(
+            arguments: ["service", "show", computerID, "--json"],
+            result: failedCoolResult(code: "authentication_required", message: "login expired")
+        ),
+    ])
+    let authEngine = CloudMirrorEngine(runner: authRunner, viewerHTML: Data("viewer".utf8))
+    do {
+        _ = try await authEngine.resume(handle)
+        throw TestFailure.assertion("Expired authentication recovered a service")
+    } catch CoolCLIError.authenticationRequired {}
+    let authRemaining = await authRunner.remainingSteps()
+    try require(
+        authRemaining == 0,
+        "Authentication expiry attempted a service mutation"
+    )
+
+    var openNetworkComputer = privateComputer
+    openNetworkComputer["network_policy"] = ["mode": "open"]
+    let networkRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": openNetworkComputer])
+        ),
+    ])
+    let networkEngine = CloudMirrorEngine(runner: networkRunner, viewerHTML: Data("viewer".utf8))
+    do {
+        _ = try await networkEngine.resume(handle)
+        throw TestFailure.assertion("Cloud View resumed with outbound networking enabled")
+    } catch CloudMirrorError.unsafeComputerConfiguration {}
+    let networkRemaining = await networkRunner.remainingSteps()
+    try require(
+        networkRemaining == 0,
+        "Network-policy drift attempted a remote mutation"
+    )
+
+    let intent = CloudProvisioningIntent(
+        generation: 7,
+        ownershipMarker: marker,
+        remoteIDSeed: "seed"
+    )
+    let recoveryRunner = ScriptedCoolRunner(steps: try [
+        CoolTestStep(
+            arguments: ["list", "--json"],
+            result: coolResult(["computers": [["id": computerID, "slug": "meatproxy7"]]])
+        ),
+        CoolTestStep(
+            arguments: ["info", computerID, "--json"],
+            result: coolResult(["computer": privateComputer])
+        ),
+        CoolTestStep(
+            arguments: ["files", "read", computerID, CloudMirrorEngine.markerPath],
+            result: rawCoolResult(markerJSON)
+        ),
+    ])
+    let recoveryEngine = CloudMirrorEngine(runner: recoveryRunner, viewerHTML: Data("viewer".utf8))
+    let recovered = try await recoveryEngine.recoverProvisioning(intent)
+    try require(
+        recovered?.computerID == computerID && recovered?.ownershipEstablished == true,
+        "A persisted provisioning receipt did not recover its exact marked computer"
+    )
+}
+
+func testCoolRunnerTimeout() async throws {
+    let client = CoolCLIClient(executableURL: URL(fileURLWithPath: "/bin/sleep"))
+    let started = Date()
+    do {
+        _ = try await client.run(
+            arguments: ["5"],
+            stdin: Data(repeating: 65, count: 1_048_576),
+            timeout: 0.1
+        )
+        throw TestFailure.assertion("Cool command timeout succeeded")
+    } catch CoolCLIError.timedOut {}
+    try require(Date().timeIntervalSince(started) < 2, "Cool timeout was blocked by a full stdin pipe")
+}
+
+func testCoolRunnerCancellationAndOutputLimit() async throws {
+    let sleepClient = CoolCLIClient(executableURL: URL(fileURLWithPath: "/bin/sleep"))
+    let cancellation = Task {
+        try await sleepClient.run(arguments: ["5"], stdin: nil, timeout: 10)
+    }
+    try await Task.sleep(for: .milliseconds(100))
+    let cancelledAt = Date()
+    cancellation.cancel()
+    do {
+        _ = try await cancellation.value
+        throw TestFailure.assertion("A cancelled Cool command completed successfully")
+    } catch is CancellationError {}
+    try require(
+        Date().timeIntervalSince(cancelledAt) < 2,
+        "Cancelling a Cool command did not terminate its child process promptly"
+    )
+
+    let shutdownCancellation = Task {
+        try await sleepClient.run(arguments: ["5"], stdin: nil, timeout: 10)
+    }
+    try await Task.sleep(for: .milliseconds(100))
+    sleepClient.cancelAll()
+    do {
+        _ = try await shutdownCancellation.value
+        throw TestFailure.assertion("Shutting down the Cool runner left a command alive")
+    } catch is CancellationError {}
+
+    let outputClient = CoolCLIClient(executableURL: URL(fileURLWithPath: "/usr/bin/yes"))
+    let outputStarted = Date()
+    do {
+        _ = try await outputClient.run(arguments: [], stdin: nil, timeout: 5)
+        throw TestFailure.assertion("Unbounded Cool output completed successfully")
+    } catch CoolCLIError.outputTooLarge {}
+    try require(
+        Date().timeIntervalSince(outputStarted) < 2,
+        "Cool output was not capped while the process was running"
+    )
+}
+
 let tests: [(String, () throws -> Void)] = [
     ("inspector placement", testInspectorPlacement),
     ("top dock placement", testTopDockPlacement),
@@ -1292,6 +1946,8 @@ let tests: [(String, () throws -> Void)] = [
     ("clean uninstall", testCleanUninstall),
     ("foreign Pi extension", testForeignPiExtension),
     ("unexpected hook structure", testUnexpectedHookStructure),
+    ("cloud snapshot privacy", testCloudSnapshotPrivacy),
+    ("cool authentication failure", testCoolAuthenticationFailure),
 ]
 
 do {
@@ -1299,7 +1955,19 @@ do {
         try test()
         print("PASS \(name)")
     }
-    print("PASS all \(tests.count) test groups")
+    try await testCloudMirrorContract()
+    print("PASS cloud mirror contract")
+    try await testCloudRecoveryAndOwnership()
+    print("PASS cloud recovery and ownership")
+    try await testCloudLoggedOutPreflight()
+    print("PASS cloud logged-out preflight")
+    try await testCloudFailClosedSafety()
+    print("PASS cloud fail-closed safety")
+    try await testCoolRunnerTimeout()
+    print("PASS cool runner timeout")
+    try await testCoolRunnerCancellationAndOutputLimit()
+    print("PASS cool runner cancellation and output limit")
+    print("PASS all \(tests.count + 6) test groups")
 } catch {
     fputs("FAIL \(error)\n", stderr)
     exit(1)

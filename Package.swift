@@ -16,6 +16,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "CodeWindowCore"),
+        .target(
+            name: "CodeWindowCloud",
+            dependencies: ["CodeWindowCore"]
+        ),
         .executableTarget(
             name: "CodeWindowReporter",
             dependencies: ["CodeWindowCore"]
@@ -28,12 +32,13 @@ let package = Package(
             name: "CodeWindowApp",
             dependencies: [
                 "CodeWindowCore",
+                "CodeWindowCloud",
                 .product(name: "Sparkle", package: "Sparkle"),
             ]
         ),
         .executableTarget(
             name: "CodeWindowTests",
-            dependencies: ["CodeWindowCore"],
+            dependencies: ["CodeWindowCore", "CodeWindowCloud"],
             path: "Sources/CodeWindowCoreTests"
         ),
     ]

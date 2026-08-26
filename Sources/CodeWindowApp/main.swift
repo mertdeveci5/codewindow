@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inspector: InspectorController?
     private var store: SessionStore?
     private var sessionsCancellable: AnyCancellable?
+    private var cloudStateCancellable: AnyCancellable?
+    private var cloudView: CloudViewController?
     private var isManuallyHidden = false
     private var updaterController: SPUStandardUpdaterController?
     private lazy var updateReminder = UpdateReminder(isPanelManuallyHidden: { [weak self] in
@@ -78,9 +80,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 : nil
             let dockDefaults = smokeDefaultsSuite.flatMap(UserDefaults.init(suiteName:))
                 ?? .standard
+            let cloudView = CloudViewController(defaults: dockDefaults)
+            self.cloudView = cloudView
             let panel = makePanel(
                 store: store,
-                dockDefaults: dockDefaults
+                dockDefaults: dockDefaults,
+                cloudView: cloudView
             )
             self.panel = panel
 
@@ -147,6 +152,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && visibleReminder.shouldLetSparklePresent(immediateFocus: true)
                     && hiddenReminder.shouldLetSparklePresent(immediateFocus: false)
                 let hasAppIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil
+                let cloudViewerURL = Bundle.main.url(
+                    forResource: "index",
+                    withExtension: "html",
+                    subdirectory: "CloudView"
+                )
+                let cloudViewer = cloudViewerURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+                let hasCloudViewer = cloudViewer?.contains("Content-Security-Policy") == true
+                    && cloudViewer?.contains("state.json") == true
+                    && cloudViewer?.contains("font-weight: 400") == true
                 let hasSparkleFramework = FileManager.default.fileExists(
                     atPath: Bundle.main.bundleURL
                         .appendingPathComponent("Contents/Frameworks/Sparkle.framework")
@@ -188,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("width", panel.frame.width == PanelMetrics.width),
                     ("logos", AgentLogoAssets.allAvailable),
                     ("icon", hasAppIcon),
+                    ("cloudViewer", hasCloudViewer),
                     ("sparkle", hasSparkleFramework && hasSparkleConfiguration),
                     ("hookGuidance", diagnosticGuidanceWorks),
                     ("livePreview", livePreviewWorks),
@@ -224,6 +239,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.inspector?.reconcile(with: sessions)
                 self?.updatePanelVisibility()
             }
+            cloudStateCancellable = store.$sessions
+                .combineLatest(store.$feeds)
+                .sink { [weak cloudView] sessions, feeds in
+                    cloudView?.update(sessions: sessions, feeds: feeds)
+                }
+            Task { await cloudView.restoreIfNeeded() }
             NSWorkspace.shared.notificationCenter.addObserver(
                 self,
                 selector: #selector(frontmostApplicationDidChange),
@@ -237,10 +258,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 name: NSApplication.didChangeScreenParametersNotification,
                 object: nil
             )
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(applicationDidWake),
+                name: NSWorkspace.didWakeNotification,
+                object: nil
+            )
         } catch {
             fputs("CodeWindow: \(error)\n", stderr)
             NSApplication.shared.terminate(nil)
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        cloudView?.shutdown()
     }
 
     /// Overflow rows scroll, while the grab strip above them remains a two-axis drag surface.
@@ -391,12 +422,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && panel.frame.width == PanelMetrics.width
         dock.panelDragDidEnd(moved: true)
 
-        return foldedWorks
+        let works = foldedWorks
             && unfoldedWorks
             && refoldedWorks
             && resistedPullWorks
             && restoredWorks
             && pullToDetachWorks
+        if !works {
+            fputs(
+                "top dock smoke failed: folded=\(foldedWorks) unfolded=\(unfoldedWorks) "
+                    + "refolded=\(refoldedWorks) resistedPull=\(resistedPullWorks) "
+                    + "restored=\(restoredWorks) pullToDetach=\(pullToDetachWorks)\n",
+                stderr
+            )
+        }
+        return works
     }
 
     func applicationShouldHandleReopen(
@@ -408,7 +448,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func makePanel(store: SessionStore, dockDefaults: UserDefaults) -> FloatingPanel {
+    private func makePanel(
+        store: SessionStore,
+        dockDefaults: UserDefaults,
+        cloudView: CloudViewController
+    ) -> FloatingPanel {
         let panel = FloatingPanel(
             contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelMetrics.initialHeight),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -429,6 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store: store,
             updateReminder: updateReminder,
             dock: dock.model,
+            cloudView: cloudView,
             reportFullContentSize: { [weak dock] size in
                 dock?.fullContentSizeChanged(to: size)
             },
@@ -472,6 +517,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleDock: { [weak dock] in
                 dock?.toggleDock()
             },
+            revealPanel: { [weak dock] in
+                dock?.unfold()
+            },
             unfoldedHoverChanged: { [weak dock] isHovered in
                 dock?.unfoldedHoverChanged(isHovered)
             }
@@ -501,6 +549,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A resolution or display change moves the notch: recentre rather than drift.
         dock?.screenParametersDidChange()
         inspector?.relayout()
+    }
+
+    @objc private func applicationDidWake() {
+        Task { await cloudView?.applicationDidWake() }
     }
 
     @objc private func frontmostApplicationDidChange() {

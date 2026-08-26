@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "revision": 7,
+  "generatedAt": "2026-08-26T12:30:00Z",
+  "sessions": [
+    {
+      "id": "preview-codewindow",
+      "agent": "codex",
+      "activity": "working",
+      "projectLabel": "codewindow",
+      "action": "runningCommand",
+      "taskPreview": "Build a private live view for every running agent session",
+      "actionPreview": "swift test --parallel",
+      "updatedAt": "2026-08-26T12:29:56Z",
+      "events": [
+        {
+          "id": "cw-1",
+          "kind": "user",
+          "text": "Make the Cloud View feel like Mail: sessions on the left, live detail on the right.",
+          "detail": null,
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:28:22Z"
+        },
+        {
+          "id": "cw-2",
+          "kind": "assistant",
+          "text": "I’ll prototype the viewer locally first and keep it read-only.",
+          "detail": null,
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:28:35Z"
+        },
+        {
+          "id": "cw-3",
+          "kind": "toolCall",
+          "text": "reading file",
+          "detail": "Sources/CodeWindowApp/PanelPalette.swift",
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:28:46Z"
+        },
+        {
+          "id": "cw-4",
+          "kind": "toolResult",
+          "text": "file read",
+          "detail": "PanelPalette.swift",
+          "succeeded": true,
+          "createdAt": "2026-08-26T12:28:47Z"
+        },
+        {
+          "id": "cw-5",
+          "kind": "assistant",
+          "text": "The viewer now uses the same restrained black surfaces and status colors as the Mac panel.",
+          "detail": null,
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:29:18Z"
+        },
+        {
+          "id": "cw-6",
+          "kind": "toolCall",
+          "text": "running command",
+          "detail": "swift test --parallel",
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:29:56Z"
+        }
+      ]
+    },
+    {
+      "id": "preview-runtimevm",
+      "agent": "claude",
+      "activity": "needsAttention",
+      "projectLabel": "runtimevm",
+      "action": "awaitingPermission",
+      "taskPreview": "Verify private browser access and cold wake behavior",
+      "actionPreview": "Allow the authenticated browser check?",
+      "updatedAt": "2026-08-26T12:29:41Z",
+      "events": [
+        {
+          "id": "rt-1",
+          "kind": "assistant",
+          "text": "The private computer is ready for an authenticated browser check.",
+          "detail": null,
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:29:12Z"
+        },
+        {
+          "id": "rt-2",
+          "kind": "attention",
+          "text": "Permission required",
+          "detail": "Allow the authenticated browser check?",
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:29:41Z"
+        }
+      ]
+    },
+    {
+      "id": "preview-website",
+      "agent": "pi",
+      "activity": "idle",
+      "projectLabel": "website",
+      "action": "waiting",
+      "taskPreview": "Polish the download page for tomorrow’s demo",
+      "actionPreview": null,
+      "updatedAt": "2026-08-26T12:27:08Z",
+      "events": [
+        {
+          "id": "web-1",
+          "kind": "toolResult",
+          "text": "changes complete",
+          "detail": "website/src/components/PanelDemo.tsx",
+          "succeeded": true,
+          "createdAt": "2026-08-26T12:27:02Z"
+        },
+        {
+          "id": "web-2",
+          "kind": "assistant",
+          "text": "The demo page is ready for review.",
+          "detail": null,
+          "succeeded": null,
+          "createdAt": "2026-08-26T12:27:08Z"
+        }
+      ]
+    },
+    {
+      "id": "preview-cool-cli",
+      "agent": "codex",
+      "activity": "starting",
+      "projectLabel": "cool-cli",
+      "action": "thinking",
+      "taskPreview": "Review the command contract for snapshot publishing",
+      "actionPreview": null,
+      "updatedAt": "2026-08-26T12:29:49Z",
+      "events": []
+    }
+  ]
+}

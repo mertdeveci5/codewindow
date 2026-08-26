@@ -58,6 +58,7 @@ fi
     "$app_dir/Contents/Helpers" \
     "$app_dir/Contents/Frameworks" \
     "$app_dir/Contents/Resources/AgentLogos" \
+    "$app_dir/Contents/Resources/CloudView" \
     "$app_dir/Contents/Resources/ThirdPartyLicenses"
 /bin/cp "$repo_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 
@@ -85,6 +86,7 @@ posthog_host=${posthog_host:-https://us.i.posthog.com}
 /bin/cp "$repo_dir/Resources/AgentLogos/codex.svg" "$app_dir/Contents/Resources/AgentLogos/codex.svg"
 /bin/cp "$repo_dir/Resources/AgentLogos/claude.svg" "$app_dir/Contents/Resources/AgentLogos/claude.svg"
 /bin/cp "$repo_dir/Resources/AgentLogos/pi.svg" "$app_dir/Contents/Resources/AgentLogos/pi.svg"
+/bin/cp "$repo_dir/Resources/CloudView/index.html" "$app_dir/Contents/Resources/CloudView/index.html"
 
 if [[ "$build_mode" == "--universal" ]]; then
     /usr/bin/lipo -create \

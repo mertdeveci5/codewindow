@@ -96,6 +96,51 @@ struct NoticeRow: View {
     }
 }
 
+struct CloudViewStatusRow: View {
+    let status: CloudViewStatusPresentation
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: PanelMetrics.glyphGap) {
+            Group {
+                if status.isWorking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: status.isError ? "icloud.slash" : "icloud")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(status.isError ? PanelPalette.attention : PanelPalette.working)
+                }
+            }
+            .frame(width: PanelMetrics.glyphSize, height: PanelMetrics.glyphSize)
+
+            VStack(alignment: .leading, spacing: PanelMetrics.textLineGap) {
+                Text(status.title)
+                    .font(.system(size: PanelMetrics.actionSize, weight: .regular))
+                    .foregroundStyle(PanelPalette.title)
+                Text(status.detail)
+                    .font(.system(size: PanelMetrics.metaSize, weight: .regular))
+                    .foregroundStyle(PanelPalette.meta)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 4)
+
+            if status.isError {
+                Button("Retry", action: retry)
+                    .font(.system(size: PanelMetrics.metaSize, weight: .regular))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PanelPalette.title)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.white.opacity(0.10)))
+            }
+        }
+        .panelStatusRow()
+        .accessibilityElement(children: .contain)
+    }
+}
+
 struct HookRestartRow: View {
     let showsCodexTrustStep: Bool
 

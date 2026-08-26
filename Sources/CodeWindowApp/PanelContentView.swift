@@ -15,6 +15,7 @@ struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     @ObservedObject var updateReminder: UpdateReminder
     @ObservedObject var dock: TopDockModel
+    @ObservedObject var cloudView: CloudViewController
     let reportFullContentSize: (CGSize) -> Void
     let reportCapsuleContentSize: (CGSize) -> Void
     let reportScrollableListHeight: (CGFloat) -> Void
@@ -26,6 +27,7 @@ struct PanelContentView: View {
     let activateTerminal: (PresentedSession) -> Bool
     let hoverSession: (PresentedSession, Bool) -> Void
     let toggleDock: () -> Void
+    let revealPanel: () -> Void
     let unfoldedHoverChanged: (Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,6 +36,9 @@ struct PanelContentView: View {
     @State private var isInstallingHooks = false
     @State private var isUninstallingHooks = false
     @State private var confirmsUninstall = false
+    @State private var confirmsCloudSetup = false
+    @State private var confirmsCloudTurnOff = false
+    @State private var confirmsCloudForget = false
     @State private var notice: PanelNotice?
 
     var body: some View {
@@ -60,6 +65,27 @@ struct PanelContentView: View {
                 }
             }
             .contextMenu {
+                Button(cloudView.setupTitle) {
+                    beginCloudViewAction()
+                }
+                .disabled(cloudView.isBusy)
+                if cloudView.canOpen {
+                    Button("Copy Cloud View Link") {
+                        cloudView.copyLink()
+                    }
+                }
+                if cloudView.isConfigured, !cloudView.hasPendingDeletion {
+                    Button("Turn Off Cloud View…", role: .destructive) {
+                        confirmsCloudTurnOff = true
+                    }
+                    .disabled(cloudView.isBusy)
+                }
+                if cloudView.canForgetSavedView {
+                    Button("Forget Saved Cloud View…", role: .destructive) {
+                        confirmsCloudForget = true
+                    }
+                }
+                Divider()
                 Button("Install or update agent hooks…") {
                     Task { await installAgentHooks() }
                 }
@@ -80,6 +106,32 @@ struct PanelContentView: View {
                 }
             } message: {
                 Text("This removes CodeWindow's Codex and Claude hooks, Pi extension, reporter, and local state. Other agent settings stay unchanged.")
+            }
+            .alert("Set up private Cloud View?", isPresented: $confirmsCloudSetup) {
+                Button("Cancel", role: .cancel) {
+                    cloudView.cancelConsent()
+                }
+                Button("Create Private View") {
+                    Task { await cloudView.createCloudView() }
+                }
+            } message: {
+                Text("CodeWindow will create a dedicated private Cool Computer and continuously mirror session summaries plus recent chat and tool activity. Agents keep running on this Mac, and the view goes offline when CodeWindow stops updating it.")
+            }
+            .alert("Turn off Cloud View?", isPresented: $confirmsCloudTurnOff) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete Private View", role: .destructive) {
+                    Task { await cloudView.turnOff() }
+                }
+            } message: {
+                Text("This permanently deletes the dedicated Cool Computer and its private link. Your local CodeWindow sessions and agent setup are unchanged.")
+            }
+            .alert("Forget the saved Cloud View?", isPresented: $confirmsCloudForget) {
+                Button("Cancel", role: .cancel) {}
+                Button("Forget Saved View", role: .destructive) {
+                    cloudView.forgetSavedView()
+                }
+            } message: {
+                Text("CodeWindow will remove only its local saved link. It will not change or delete the unverified Cool Computer. You can then set up a new sequential Cloud View.")
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("CodeWindow, agent activity")
@@ -185,6 +237,13 @@ struct PanelContentView: View {
                 AvailableUpdateRow(version: availableVersion, showUpdate: checkForUpdates)
                     .transition(.opacity)
             }
+            if let status = cloudView.statusPresentation {
+                CloudViewStatusRow(
+                    status: status,
+                    retry: beginCloudViewAction
+                )
+                .transition(.opacity)
+            }
             if isSessionListOverflowing {
                 PanelDragHandle()
             }
@@ -194,6 +253,20 @@ struct PanelContentView: View {
         .animation(motion, value: hooksInstalled)
         .animation(motion, value: updateReminder.availableVersion)
         .animation(motion, value: notice)
+        .animation(motion, value: cloudView.statusPresentation)
+    }
+
+    private func beginCloudViewAction() {
+        if cloudView.canOpen {
+            cloudView.open()
+            return
+        }
+        revealPanel()
+        Task {
+            if await cloudView.prepareSetup() {
+                confirmsCloudSetup = true
+            }
+        }
     }
 
     /// The list scrolls once it outgrows `maximumListHeight`. Without this the rows past

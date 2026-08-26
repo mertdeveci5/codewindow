@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.23-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.24-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -59,6 +59,31 @@ Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeW
 ```sh
 open -a CodeWindow
 ```
+
+## Private Cloud View
+
+Cloud View is an optional, read-only way to follow CodeWindow from another device. Install the
+`cool` CLI, run `cool login` in Terminal, then right-click the CodeWindow panel and choose **Set Up
+Cloud View…**. CodeWindow asks before creating anything.
+
+Each setup creates one dedicated private Cool Computer with the next sequential address, such as
+`https://meatproxy1.cool.computer`, then `meatproxy2`, and so on. The address is accepted only
+when the authenticated `cool` CLI returns the expected private URL. Agents still run entirely on
+the Mac; the remote computer only serves the viewer and the latest snapshot. The page shows an
+offline state if this Mac stops publishing.
+
+The viewer mirrors the agent type, activity, project folder name, bounded task/action previews,
+and up to 40 recent CodeWindow feed events per live session. It does not scan transcripts, copy
+process identities, or send agent credentials. CodeWindow removes control characters, applies
+strict size limits, replaces local session identifiers with privately seeded identifiers, and
+re-runs common credential redaction before every upload. Redaction is best effort rather than a
+security guarantee, so do not enable Cloud View for prompts or commands whose previews must never
+leave the Mac.
+
+If `cool` is missing, too old, or logged out, Cloud View pauses without creating or updating a
+remote resource. CodeWindow never reads or stores Cool credentials and never runs an interactive
+login. Use **Turn Off Cloud View…** to verify ownership and permanently delete its dedicated Cool
+Computer; this does not alter local sessions, hooks, or agent settings.
 
 ## Updates
 
