@@ -89,6 +89,149 @@ func testInspectorPlacement() throws {
     }
 }
 
+func testTopDockPlacement() throws {
+    let screen = CGRect(x: 0, y: 0, width: 1_512, height: 982)
+    let visible = CGRect(x: 0, y: 0, width: 1_512, height: 944)
+    let leftArea = CGRect(x: 0, y: 944, width: 658, height: 38)
+    let rightArea = CGRect(x: 854, y: 944, width: 658, height: 38)
+    let notch = try unwrap(
+        TopDockPlacementPolicy.notch(
+            screenFrame: screen,
+            topInset: 38,
+            leftArea: leftArea,
+            rightArea: rightArea
+        ),
+        "Notched screen did not produce a camera housing"
+    )
+    try require(notch == CGRect(x: 658, y: 944, width: 196, height: 38), "Notch geometry mismatch")
+
+    let folded = TopDockPlacementPolicy.dockedFrame(
+        contentSize: CGSize(width: 180, height: 26),
+        notch: notch,
+        screenFrame: screen,
+        visibleFrame: visible
+    )
+    try require(folded.midX == notch.midX, "Folded island was not centered on the notch")
+    try require(
+        folded.maxY == notch.minY + TopDockPlacementPolicy.notchOverlap,
+        "Folded island did not overlap the camera housing"
+    )
+    try require(
+        folded.width == notch.width + TopDockPlacementPolicy.notchShoulder * 2,
+        "Folded island did not overhang the housing on both sides"
+    )
+    try require(
+        folded.width > notch.width + TopDockPlacementPolicy.shoulderRadius * 4,
+        "Activity bar was too narrow for sculpted shoulders to read"
+    )
+    let widestFolded = TopDockPlacementPolicy.dockedFrame(
+        contentSize: CGSize(width: 900, height: 30),
+        notch: notch,
+        screenFrame: screen,
+        visibleFrame: visible
+    )
+    try require(
+        widestFolded.width == TopDockPlacementPolicy.maximumCapsuleWidth,
+        "A long action made the folded island wider than its unfolded panel"
+    )
+    try require(
+        TopDockPlacementPolicy.connectorWidth(
+            notchWidth: notch.width,
+            dockWidth: folded.width
+        ) == notch.width,
+        "Connector did not match the measured housing width"
+    )
+    try require(
+        TopDockPlacementPolicy.connectorWidth(notchWidth: notch.width, dockWidth: 120)
+            == 120 - (TopDockPlacementPolicy.shoulderRadius + TopDockPlacementPolicy.barTopRadius) * 2,
+        "Connector did not leave room for both shoulders in a narrow island"
+    )
+    try require(
+        TopDockPlacementPolicy.connectorWidth(notchWidth: 0, dockWidth: folded.width) == 0,
+        "A display without a housing produced a connector"
+    )
+
+    let unfolded = TopDockPlacementPolicy.unfoldedFrame(
+        contentSize: CGSize(width: 296, height: 360),
+        dockedFrame: folded,
+        visibleFrame: visible,
+        margin: 18
+    )
+    try require(unfolded.maxY == folded.maxY, "Unfolding broke the fixed top edge")
+    try require(unfolded.midX == folded.midX, "Unfolded panel drifted off center")
+    try require(visible.insetBy(dx: 18, dy: 18).minY <= unfolded.minY, "Unfolded panel escaped below")
+
+    let externalScreen = CGRect(x: -1_920, y: 120, width: 1_920, height: 1_080)
+    let externalVisible = CGRect(x: -1_920, y: 120, width: 1_920, height: 1_050)
+    let fallback = TopDockPlacementPolicy.dockedFrame(
+        contentSize: CGSize(width: 160, height: 26),
+        notch: nil,
+        screenFrame: externalScreen,
+        visibleFrame: externalVisible
+    )
+    try require(fallback.midX == externalScreen.midX, "Fallback capsule ignored screen origin")
+    try require(
+        fallback.maxY == externalVisible.maxY - TopDockPlacementPolicy.edgeGap,
+        "Fallback capsule did not sit below the menu bar"
+    )
+    try require(
+        fallback.height == TopDockPlacementPolicy.capsuleHeight,
+        "Fallback capsule borrowed the housing overlap it has nothing to attach to"
+    )
+    try require(
+        folded.width - notch.width
+            >= (TopDockPlacementPolicy.barTopRadius + TopDockPlacementPolicy.shoulderRadius) * 2,
+        "Pill corners overran the concave shoulders that grow from the notch"
+    )
+    let threeLine = TopDockPlacementPolicy.dockedFrame(
+        contentSize: CGSize(width: 120, height: 0),
+        notch: nil,
+        screenFrame: externalScreen,
+        visibleFrame: externalVisible
+    )
+    try require(
+        threeLine.height == TopDockPlacementPolicy.capsuleHeight,
+        "Compact island shrank below its three reserved lines"
+    )
+    try require(
+        // A notchless island is a true pill, so its body must stay wider than it is tall.
+        threeLine.width >= threeLine.height,
+        "Notchless fallback grew taller than it is wide and stopped reading as a pill"
+    )
+    try require(
+        threeLine.width == TopDockPlacementPolicy.minimumCapsuleWidth,
+        "Compact island fell below the width its lines need to be worth reading"
+    )
+
+    try require(
+        TopDockPlacementPolicy.proximity(of: folded, target: folded) == 1,
+        "Exact dock placement did not have full proximity"
+    )
+    let corner = folded.offsetBy(dx: TopDockPlacementPolicy.magnetHalfWidth + 1, dy: 0)
+    try require(
+        TopDockPlacementPolicy.proximity(of: corner, target: folded) == 0,
+        "Top corner incorrectly entered the magnetic zone"
+    )
+    try require(
+        TopDockPlacementPolicy.shouldDock(proximity: TopDockPlacementPolicy.dockThreshold),
+        "Dock threshold was not inclusive"
+    )
+    try require(
+        !TopDockPlacementPolicy.shouldDetach(
+            panelFrame: folded.offsetBy(dx: TopDockPlacementPolicy.detachDistance - 1, dy: 0),
+            dockedFrame: folded
+        ),
+        "Dock detached before the deliberate movement threshold"
+    )
+    try require(
+        TopDockPlacementPolicy.shouldDetach(
+            panelFrame: folded.offsetBy(dx: TopDockPlacementPolicy.detachDistance, dy: 0),
+            dockedFrame: folded
+        ),
+        "Dock did not detach at the deliberate movement threshold"
+    )
+}
+
 func testSessionFeed() throws {
     let first = SessionFeedEvent(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
@@ -1134,6 +1277,7 @@ func readJSON(_ url: URL) throws -> [String: Any] {
 
 let tests: [(String, () throws -> Void)] = [
     ("inspector placement", testInspectorPlacement),
+    ("top dock placement", testTopDockPlacement),
     ("session feed", testSessionFeed),
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),

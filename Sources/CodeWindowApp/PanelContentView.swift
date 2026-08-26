@@ -14,7 +14,9 @@ struct PanelNotice: Equatable, Sendable {
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     @ObservedObject var updateReminder: UpdateReminder
-    let reportHeight: (CGFloat) -> Void
+    @ObservedObject var dock: TopDockModel
+    let reportFullContentSize: (CGSize) -> Void
+    let reportCapsuleContentSize: (CGSize) -> Void
     let reportScrollableListHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
     let uninstallHooks: () async -> PanelNotice
@@ -23,6 +25,8 @@ struct PanelContentView: View {
     let hidePanel: () -> Void
     let activateTerminal: (PresentedSession) -> Bool
     let hoverSession: (PresentedSession, Bool) -> Void
+    let toggleDock: () -> Void
+    let unfoldedHoverChanged: (Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("hookSetupPromptDismissed") private var hookSetupPromptDismissed = false
@@ -33,24 +37,20 @@ struct PanelContentView: View {
     @State private var notice: PanelNotice?
 
     var body: some View {
-        stack
-            .padding(PanelMetrics.bezel)
-            .frame(width: PanelMetrics.width)
-            .background(PanelPalette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.75)
-                    .accessibilityHidden(true)
+        Group {
+            if isFolded {
+                TopDockCapsule(
+                    sessions: store.sessions,
+                    notchWidth: dock.notchWidth,
+                    hooksInstalled: hooksInstalled,
+                    reduceMotion: reduceMotion,
+                    reportContentSize: reportCapsuleContentSize
+                )
+                .onAppear { reportScrollableListHeight(0) }
+            } else {
+                fullPanel
             }
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
-                }
-            }
-            .onPreferenceChange(PanelHeightKey.self, perform: reportHeight)
-            .onAppear { reportScrollableListHeight(scrollableListHeight) }
-            .onChange(of: scrollableListHeight, perform: reportScrollableListHeight)
+        }
             .onAppear { showReportingFailure(store.reportingFailure) }
             .onChange(of: store.reportingFailure, perform: showReportingFailure)
             .task {
@@ -69,6 +69,7 @@ struct PanelContentView: View {
                 .disabled(isInstallingHooks || isUninstallingHooks)
                 Button("Check for Updates…", action: checkForUpdates)
                 Divider()
+                Button(dock.isDocked ? "Detach from Top" : "Dock at Top", action: toggleDock)
                 Button("Hide CodeWindow", action: hidePanel)
                 Button("Quit CodeWindow") { NSApplication.shared.terminate(nil) }
             }
@@ -82,6 +83,80 @@ struct PanelContentView: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("CodeWindow, agent activity")
+    }
+
+    /// True only for the docked capsule; an unfolded dock shows the ordinary panel.
+    private var isFolded: Bool {
+        dock.isDocked && !dock.isUnfolded
+    }
+
+    private var fullPanel: some View {
+        stack
+            .padding(PanelMetrics.bezel)
+            // An unfolded island still starts inside the camera housing. The rows begin
+            // below that overlap so nothing important hides under the hardware.
+            .padding(.top, notchInset)
+            .frame(width: PanelMetrics.width)
+            .background(isAttachedToNotch ? PanelPalette.island : PanelPalette.surface)
+            .clipShape(panelShape)
+            .contentShape(panelShape)
+            .overlay {
+                panelShape
+                    .strokeBorder(
+                        Color.white.opacity(
+                            (isAttachedToNotch ? 0 : 0.06) + 0.34 * dock.dockProximity
+                        ),
+                        lineWidth: 0.75
+                    )
+                    .accessibilityHidden(true)
+            }
+            .overlay(alignment: .top) { dockAffordance }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: dock.dockProximity)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
+                }
+            }
+            .onPreferenceChange(PanelHeightKey.self) { height in
+                reportFullContentSize(CGSize(width: PanelMetrics.width, height: height))
+            }
+            .onAppear { reportScrollableListHeight(scrollableListHeight) }
+            .onChange(of: scrollableListHeight, perform: reportScrollableListHeight)
+            .onHover(perform: unfoldedHoverChanged)
+    }
+
+    /// Docked on a camera housing the panel keeps the folded island's silhouette, so
+    /// unfolding grows the same body instead of replacing it with a popover.
+    private var isAttachedToNotch: Bool {
+        dock.isDocked && dock.isAttachedToNotch
+    }
+
+    private var notchInset: CGFloat {
+        isAttachedToNotch ? TopDockPlacementPolicy.notchOverlap : 0
+    }
+
+    private var panelShape: TopDockIslandShape {
+        TopDockIslandShape(
+            connectorWidth: isAttachedToNotch ? dock.notchWidth : 0,
+            connectorDrop: notchInset,
+            topRadius: isAttachedToNotch
+                ? TopDockPlacementPolicy.barTopRadius
+                : PanelMetrics.outerRadius,
+            bottomRadius: PanelMetrics.outerRadius
+        )
+    }
+
+    /// The panel is nearing the magnetic top zone: a hint of the capsule it is about to become.
+    @ViewBuilder
+    private var dockAffordance: some View {
+        if dock.dockProximity > 0 {
+            Capsule()
+                .fill(Color.white.opacity(0.55))
+                .frame(width: 44, height: 3)
+                .padding(.top, PanelMetrics.bezel)
+                .opacity(dock.dockProximity)
+                .accessibilityHidden(true)
+        }
     }
 
     private var stack: some View {

@@ -2,6 +2,8 @@ import SwiftUI
 
 enum PanelPalette {
     static let surface = Color(red: 0.025, green: 0.025, blue: 0.029)
+    /// The docked island borrows the housing's own black so the seam disappears.
+    static let island = Color.black
     static let title = Color.white.opacity(0.96)
     static let meta = Color.white.opacity(0.48)
     static let diagnostic = Color.white.opacity(0.64)

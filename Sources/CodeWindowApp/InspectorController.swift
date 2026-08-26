@@ -48,6 +48,12 @@ final class InspectorController: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// True while a detail view is up or on its way, which is a legitimate reason for the
+    /// pointer to be off the panel.
+    var isPresenting: Bool {
+        panel?.isVisible == true || hoveredSessionID != nil || inspectorIsHovered
+    }
+
     func rowHoverChanged(_ session: PresentedSession, isHovered: Bool) {
         if isHovered {
             hoveredSessionID = session.id

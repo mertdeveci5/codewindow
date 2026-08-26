@@ -15,6 +15,14 @@ extension NSPanel {
     }
 }
 
+/// Receives the start and the end of a panel-moving gesture. Docking is decided when the
+/// gesture ends, so the panel never snaps away mid-drag.
+@MainActor
+protocol TopDockPanelObserver: AnyObject {
+    func panelDragDidBegin()
+    func panelDragDidEnd(moved: Bool)
+}
+
 /// A borderless, non-activating panel that floats above every Space and over
 /// full-screen apps. The panel itself never takes key or main status. A session
 /// row can still explicitly return focus to the terminal that owns that session.
@@ -27,15 +35,33 @@ final class FloatingPanel: NSPanel {
     private var cursorRevealWorkItem: DispatchWorkItem?
     private var isCursorCaptured = false
     private var scrollGesture: ScrollGesture?
+    private var isTrackpadDragActive = false
+    private var trackpadEndWorkItem: DispatchWorkItem?
 
     /// Height of the session list that can scroll, measured up from the bottom bezel.
     /// Zero while every row fits, so the whole panel stays a trackpad drag surface.
     var scrollableListHeight: CGFloat = 0
 
+    weak var dockObserver: TopDockPanelObserver?
+
+    /// While docked the panel deliberately lives outside the visible frame — flush with the
+    /// notch — so the usual on-screen clamping has to stand down until it detaches.
+    var isTopDocked = false
+
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
+        // Background dragging runs its own event loop inside AppKit, so this call only
+        // returns once the mouse is up. That return is the end of the gesture.
+        if event.type == .leftMouseDown, dockObserver != nil {
+            dockObserver?.panelDragDidBegin()
+            let startFrame = frame
+            super.sendEvent(event)
+            dockObserver?.panelDragDidEnd(moved: frame != startFrame)
+            return
+        }
+
         guard event.type == .scrollWheel, event.hasPreciseScrollingDeltas else {
             super.sendEvent(event)
             return
@@ -62,9 +88,19 @@ final class FloatingPanel: NSPanel {
         // preference so the panel always follows the physical finger movement.
         let directionCorrection: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
         let isMomentum = !event.momentumPhase.isEmpty
+        if isMomentum {
+            trackpadEndWorkItem?.cancel()
+            trackpadEndWorkItem = nil
+        }
         if isMomentum && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             releaseCursor()
+            finishTrackpadDrag()
             return
+        }
+
+        if !isTrackpadDragActive, !isMomentum {
+            isTrackpadDragActive = true
+            dockObserver?.panelDragDidBegin()
         }
 
         if let movement = moveByTrackpad(
@@ -82,6 +118,16 @@ final class FloatingPanel: NSPanel {
             || isMomentum
         {
             releaseCursor()
+        }
+
+        if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled) {
+            finishTrackpadDrag()
+        } else if event.phase.contains(.cancelled) {
+            finishTrackpadDrag()
+        } else if event.phase.contains(.ended) {
+            // Momentum arrives as a separate event. This grace period prevents docking at
+            // fingers-up and immediately tearing the new capsule away with the glide.
+            scheduleTrackpadDragEnd()
         }
     }
 
@@ -103,7 +149,9 @@ final class FloatingPanel: NSPanel {
             y: currentOrigin.y + deltaY
         )
 
-        if let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+        if !isTopDocked,
+           let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        {
             nextOrigin = constrainedOrigin(nextOrigin, in: visibleFrame)
         }
 
@@ -115,7 +163,12 @@ final class FloatingPanel: NSPanel {
         )
     }
 
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        isTopDocked ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+
     func constrainToVisibleArea() {
+        guard !isTopDocked else { return }
         let visibleFrames = NSScreen.screens.map(\.visibleFrame)
         guard !visibleFrames.contains(where: { $0.contains(frame) }),
               let target = visibleFrames.max(by: {
@@ -128,13 +181,36 @@ final class FloatingPanel: NSPanel {
     }
 
     override func close() {
+        trackpadEndWorkItem?.cancel()
+        trackpadEndWorkItem = nil
+        isTrackpadDragActive = false
         releaseCursor()
         super.close()
     }
 
     override func orderOut(_ sender: Any?) {
+        trackpadEndWorkItem?.cancel()
+        trackpadEndWorkItem = nil
+        isTrackpadDragActive = false
         releaseCursor()
         super.orderOut(sender)
+    }
+
+    private func scheduleTrackpadDragEnd() {
+        trackpadEndWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.finishTrackpadDrag()
+        }
+        trackpadEndWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+    }
+
+    private func finishTrackpadDrag() {
+        trackpadEndWorkItem?.cancel()
+        trackpadEndWorkItem = nil
+        guard isTrackpadDragActive else { return }
+        isTrackpadDragActive = false
+        dockObserver?.panelDragDidEnd(moved: true)
     }
 
     private func captureCursor(movingBy movement: NSPoint) {

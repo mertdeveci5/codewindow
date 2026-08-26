@@ -13,6 +13,7 @@ private struct InstallerCommandResult: Sendable {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel?
+    private var dock: TopDockController?
     private var inspector: InspectorController?
     private var store: SessionStore?
     private var sessionsCancellable: AnyCancellable?
@@ -69,7 +70,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if isSmokeTest {
                 updateReminder.availableVersion = "99.0"
             }
-            let panel = makePanel(store: store)
+            // The smoke test asserts the floating geometry, so it must not inherit a
+            // developer's persisted Top Dock preference. Its isolated domain is removed
+            // before the process exits so repeated runs do not leave preferences behind.
+            let smokeDefaultsSuite = isSmokeTest
+                ? "codewindow.smoke-\(UUID().uuidString)"
+                : nil
+            let dockDefaults = smokeDefaultsSuite.flatMap(UserDefaults.init(suiteName:))
+                ?? .standard
+            let panel = makePanel(
+                store: store,
+                dockDefaults: dockDefaults
+            )
             self.panel = panel
 
             if isSmokeTest {
@@ -165,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 panel.setFrameOrigin(originalOrigin)
                 let momentumMoveWorks = smokeTestMomentumMovement(of: panel, from: originalOrigin)
+                let topDockWorks = smokeTestTopDockInteraction(of: panel)
                 // Named checks rather than one conjunction: a failing run has to say which
                 // check failed, or the next person reads `false` and starts guessing.
                 let checks: [(name: String, passed: Bool)] = [
@@ -181,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("updateRouting", updateRoutingWorks),
                     ("trackpad", trackpadMoveWorks),
                     ("momentum", momentumMoveWorks),
+                    ("topDock", topDockWorks),
                     ("overflowInteraction", overflowInteractionWorks),
                     ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
                     ("hoverIntent", hoverIntentWorks),
@@ -199,6 +213,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.orderOut(nil)
                 if let smokeDirectory {
                     try? FileManager.default.removeItem(at: smokeDirectory)
+                }
+                if let smokeDefaultsSuite {
+                    dockDefaults.removePersistentDomain(forName: smokeDefaultsSuite)
                 }
                 exit(failures.isEmpty ? EXIT_SUCCESS : EXIT_FAILURE)
             }
@@ -284,6 +301,104 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && cursorAfter == cursorBefore
     }
 
+    private func smokeTestTopDockInteraction(of panel: FloatingPanel) -> Bool {
+        guard let dock, let screen = panel.screen ?? NSScreen.main else { return false }
+        inspector?.dismissImmediately()
+
+        let originalTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        let notch = TopDockPlacementPolicy.notch(
+            screenFrame: screen.frame,
+            topInset: screen.safeAreaInsets.top,
+            leftArea: screen.auxiliaryTopLeftArea,
+            rightArea: screen.auxiliaryTopRightArea
+        )
+        let dockTarget = TopDockPlacementPolicy.dockedFrame(
+            contentSize: CGSize(
+                width: TopDockPlacementPolicy.minimumCapsuleWidth,
+                height: TopDockPlacementPolicy.capsuleHeight
+            ),
+            notch: notch,
+            screenFrame: screen.frame,
+            visibleFrame: screen.visibleFrame
+        )
+        dock.panelDragDidBegin()
+        panel.setFrameOrigin(NSPoint(
+            x: dockTarget.midX - panel.frame.width / 2,
+            y: dockTarget.maxY - panel.frame.height
+        ))
+        dock.panelDragDidEnd(moved: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.20))
+        let foldedTop = panel.frame.maxY
+        // A docked island reaches up into the camera housing, so the folded height is the
+        // activity bar plus that overlap.
+        let housingOverlap = notch == nil ? 0 : TopDockPlacementPolicy.notchOverlap
+        let foldedWorks = dock.model.isDocked
+            && !dock.model.isUnfolded
+            && panel.isTopDocked
+            && panel.level == .statusBar
+            && !panel.hasShadow
+            && abs(panel.frame.midX - dockTarget.midX) < 1
+            && abs(
+                panel.frame.height
+                    - (TopDockPlacementPolicy.capsuleHeight + housingOverlap)
+            ) < 1
+
+        dock.unfold()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.20))
+        let unfoldedWorks = dock.model.isUnfolded
+            && panel.hasShadow
+            && panel.frame.width == PanelMetrics.width
+            && panel.frame.height > TopDockPlacementPolicy.capsuleHeight
+            && abs(panel.frame.maxY - foldedTop) < 1
+
+        dock.fold()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        let refoldedWorks = !dock.model.isUnfolded
+            && abs(panel.frame.maxY - foldedTop) < 1
+
+        let dockedFrame = panel.frame
+        dock.panelDragDidBegin()
+        panel.setFrameOrigin(NSPoint(
+            x: panel.frame.minX + TopDockPlacementPolicy.detachDistance / 2,
+            y: panel.frame.minY
+        ))
+        dock.panelDragDidEnd(moved: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        let resistedPullWorks = dock.model.isDocked
+            && panel.isTopDocked
+            && abs(panel.frame.minX - dockedFrame.minX) < 1
+            && abs(panel.frame.minY - dockedFrame.minY) < 1
+
+        dock.detach()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        let restoredWorks = !dock.model.isDocked
+            && !panel.isTopDocked
+            && panel.level == .floating
+            && panel.frame.width == PanelMetrics.width
+            && abs(panel.frame.minX - originalTopLeft.x) < 1
+            && abs(panel.frame.maxY - originalTopLeft.y) < 1
+
+        dock.dock()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        dock.panelDragDidBegin()
+        panel.setFrameOrigin(NSPoint(
+            x: panel.frame.minX + TopDockPlacementPolicy.detachDistance + 1,
+            y: panel.frame.minY
+        ))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        let pullToDetachWorks = !dock.model.isDocked
+            && !panel.isTopDocked
+            && panel.frame.width == PanelMetrics.width
+        dock.panelDragDidEnd(moved: true)
+
+        return foldedWorks
+            && unfoldedWorks
+            && refoldedWorks
+            && resistedPullWorks
+            && restoredWorks
+            && pullToDetachWorks
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
@@ -293,7 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func makePanel(store: SessionStore) -> FloatingPanel {
+    private func makePanel(store: SessionStore, dockDefaults: UserDefaults) -> FloatingPanel {
         let panel = FloatingPanel(
             contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelMetrics.initialHeight),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -305,13 +420,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.title = "CodeWindow"
         let inspector = InspectorController(parentPanel: panel, store: store)
         self.inspector = inspector
+        let dock = TopDockController(panel: panel, defaults: dockDefaults)
+        self.dock = dock
+        dock.isInspectorActive = { [weak inspector] in inspector?.isPresenting ?? false }
+        dock.didChangeDockState = { [weak self] in self?.dockStateDidChange() }
 
         let content = PanelContentView(
             store: store,
             updateReminder: updateReminder,
-            reportHeight: { [weak self, weak panel] height in
-                guard let self, let panel else { return }
-                self.resize(panel: panel, to: height)
+            dock: dock.model,
+            reportFullContentSize: { [weak dock] size in
+                dock?.fullContentSizeChanged(to: size)
+            },
+            reportCapsuleContentSize: { [weak dock] size in
+                dock?.capsuleContentSizeChanged(to: size)
             },
             reportScrollableListHeight: { [weak panel] height in
                 panel?.scrollableListHeight = height
@@ -346,6 +468,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             hoverSession: { [weak inspector] session, isHovered in
                 inspector?.rowHoverChanged(session, isHovered: isHovered)
+            },
+            toggleDock: { [weak dock] in
+                dock?.toggleDock()
+            },
+            unfoldedHoverChanged: { [weak dock] isHovered in
+                dock?.unfoldedHoverChanged(isHovered)
             }
         )
         panel.contentView = NSHostingView(rootView: content)
@@ -362,24 +490,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
     }
 
-    private func resize(panel: NSPanel, to measuredHeight: CGFloat) {
-        guard measuredHeight > 0 else { return }
-        let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-        let maximumHeight = visibleFrame.map { $0.height - PanelMetrics.screenMargin * 2 } ?? measuredHeight
-        let height = min(ceil(measuredHeight), maximumHeight)
-        var frame = panel.frame
-        frame.origin.y = frame.maxY - height
-        frame.size.height = height
-        if let visibleFrame {
-            frame.origin.y = max(frame.origin.y, visibleFrame.minY + PanelMetrics.screenMargin)
-        }
-        panel.setFrame(frame, display: true, animate: false)
-        panel.invalidateShadow()
+    /// Folding hides the rows the inspector hangs off, and a docked panel outranks the
+    /// auto-hide rule, so both have to be re-evaluated.
+    private func dockStateDidChange() {
+        inspector?.dismissImmediately()
+        updatePanelVisibility()
     }
 
     @objc private func screenParametersDidChange() {
-        guard let panel else { return }
-        panel.constrainToVisibleArea()
+        // A resolution or display change moves the notch: recentre rather than drift.
+        dock?.screenParametersDidChange()
         inspector?.relayout()
     }
 
@@ -395,7 +515,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updatePanelVisibility() {
         guard let panel, let store else { return }
-        let shouldHide = isManuallyHidden || frontmostApplicationOwnsSession(store.sessions)
+        // A docked panel is part of the screen furniture: it stays put over the terminal
+        // that owns the session. Only the floating panel gets out of the way.
+        let shouldHide = isManuallyHidden
+            || (dock?.isDocked != true && frontmostApplicationOwnsSession(store.sessions))
         if shouldHide {
             inspector?.dismissImmediately()
             if panel.isVisible {
