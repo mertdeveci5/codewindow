@@ -13,6 +13,7 @@ public struct HookPayload: Sendable {
         case toolFailed
         case permissionRequested
         case turnEnded
+        case interrupted
         case sessionEnded
 
         init?(name: String, notificationType: String?) {
@@ -34,6 +35,8 @@ public struct HookPayload: Sendable {
                 self = .permissionRequested
             case "messageend", "stop", "agentsettled":
                 self = .turnEnded
+            case "interrupt":
+                self = .interrupted
             case "sessionend", "sessionshutdown":
                 self = .sessionEnded
             default:
@@ -54,6 +57,7 @@ public struct HookPayload: Sendable {
     private let assistantText: String?
     private let toolFailed: Bool
     private let hasToolInput: Bool
+    private let isSubagent: Bool
     private let event: HookEvent?
 
     public init(json: [String: Any]) throws {
@@ -67,6 +71,8 @@ public struct HookPayload: Sendable {
 
         self.externalSessionID = sessionID
         self.cwd = Self.string(in: json, keys: ["cwd"]) ?? FileManager.default.currentDirectoryPath
+        self.isSubagent = Self.string(in: json, keys: ["agent_id", "agentId"])
+            .map { !$0.isEmpty } ?? false
         let toolName = Self.string(in: json, keys: ["tool_name", "toolName"])
         self.toolName = toolName
         let event = HookEvent(
@@ -116,7 +122,7 @@ public struct HookPayload: Sendable {
         previous: SessionState? = nil,
         now: Date = Date()
     ) -> SessionState? {
-        guard let presentation = presentation else { return nil }
+        guard !isSubagent, let presentation = presentation(for: agent) else { return nil }
         let actionPreview = actionPreview(for: presentation.action, previous: previous)
         return SessionState(
             sessionKey: SessionState.key(agent: agent, externalSessionID: externalSessionID),
@@ -135,7 +141,7 @@ public struct HookPayload: Sendable {
         )
     }
 
-    private var presentation: (activity: Activity, action: SafeAction)? {
+    private func presentation(for agent: AgentKind) -> (activity: Activity, action: SafeAction)? {
         switch event {
         case .sessionStarted:
             return (.starting, .waiting)
@@ -153,8 +159,8 @@ public struct HookPayload: Sendable {
         case .permissionRequested:
             return (.needsAttention, .awaitingPermission)
         case .turnEnded:
-            return (.idle, .waiting)
-        case .sessionEnded:
+            return (agent == .codex ? .ended : .idle, .waiting)
+        case .interrupted, .sessionEnded:
             return (.ended, .waiting)
         case nil:
             return nil
@@ -188,7 +194,7 @@ public struct HookPayload: Sendable {
         case .turnEnded:
             guard let text = Self.messagePreview(assistantText) else { return nil }
             return SessionFeedEvent(kind: .assistant, text: text)
-        case .sessionStarted, .sessionEnded, nil:
+        case .sessionStarted, .interrupted, .sessionEnded, nil:
             return nil
         }
     }

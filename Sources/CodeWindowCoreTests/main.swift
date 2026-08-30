@@ -318,7 +318,8 @@ func testHookPayloads() throws {
         ("PostToolUse", nil, .working, .thinking),
         ("PermissionRequest", nil, .needsAttention, .awaitingPermission),
         ("PostToolUseFailure", "Edit", .needsAttention, .failed),
-        ("Stop", nil, .idle, .waiting),
+        ("Stop", nil, .ended, .waiting),
+        ("Interrupt", nil, .ended, .waiting),
         ("SessionEnd", nil, .ended, .waiting),
         ("tool_execution_start", "read", .working, .readingFile),
         ("tool_execution_end", "read", .working, .readingFile),
@@ -326,6 +327,7 @@ func testHookPayloads() throws {
     ]
 
     for (event, tool, activity, action) in cases {
+        let agent: AgentKind = event.hasPrefix("tool_") || event == "message_end" ? .pi : .codex
         var json: [String: Any] = [
             "session_id": "private-session",
             "hook_event_name": event,
@@ -333,7 +335,7 @@ func testHookPayloads() throws {
         ]
         json["tool_name"] = tool
         let state = try unwrap(
-            HookPayload(json: json).state(agent: .codex, process: process),
+            HookPayload(json: json).state(agent: agent, process: process),
             "\(event) should produce state"
         )
         try require(state.activity == activity, "\(event) activity mismatch")
@@ -353,6 +355,18 @@ func testHookPayloads() throws {
     try require(!text.contains("SENTINEL_SECRET"), "raw content leaked")
     try require(!text.contains("/private/secret.txt"), "raw path leaked")
     try require(!text.contains("pi-session"), "external session ID leaked")
+
+    for event in ["UserPromptSubmit", "PreToolUse", "PostToolUse"] {
+        let subagentState = try HookPayload(json: [
+            "session_id": "parent-session",
+            "hook_event_name": event,
+            "agent_id": "child-agent",
+            "agent_type": "worker",
+            "cwd": "/tmp/codewindow",
+            "tool_name": "Read",
+        ]).state(agent: .codex, process: process)
+        try require(subagentState == nil, "\(event) exposed a Codex subagent as a top-level chat")
+    }
 
     let taskState = try unwrap(
         HookPayload(json: [
@@ -629,6 +643,16 @@ func testStateFiles() throws {
     try StateFiles.write(state, to: directory)
     let file = directory.appendingPathComponent("abc123.json")
     try require(StateFiles.read(from: file) == state, "State did not round trip")
+    var legacyJSON = try unwrap(
+        JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any],
+        "State JSON is not an object"
+    )
+    legacyJSON["schemaVersion"] = 1
+    legacyJSON["sessionKey"] = "abc123-legacy"
+    let legacyFile = directory.appendingPathComponent("abc123-legacy.json")
+    try JSONSerialization.data(withJSONObject: legacyJSON).write(to: legacyFile)
+    try require(StateFiles.read(from: legacyFile) == nil, "Pre-fix state survived schema invalidation")
+    try FileManager.default.removeItem(at: legacyFile)
     let directoryMode = try unwrap(
         FileManager.default.attributesOfItem(atPath: directory.path)[.posixPermissions] as? NSNumber,
         "Directory permissions missing"
@@ -1016,6 +1040,7 @@ func testHookInstaller() throws {
     let secondCodexHooks = try unwrap(secondCodex["hooks"] as? [String: Any], "Second Codex profile hooks missing")
     let claudeHooks = try unwrap(installedClaude["hooks"] as? [String: Any], "Claude hooks missing")
     try require(codexHooks["PostToolUse"] != nil, "Codex tool completion hook missing")
+    try require(codexHooks["Interrupt"] != nil, "Codex cancellation hook missing")
     try require(secondCodexHooks["PostToolUse"] != nil, "Second Codex profile tool hook missing")
     try require(claudeHooks["PostToolUseFailure"] != nil, "Claude tool failure hook missing")
     try require(claudeHooks["Notification"] != nil, "Claude notification hook missing")

@@ -8,6 +8,16 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.27",
+    date: "2026-08-30",
+    dateLabel: "Aug 30, 2026",
+    changes: [
+      "Removes finished and cancelled Codex chats from the live session list.",
+      "Excludes Codex subagents from the top-level chat list.",
+      "Clears stale pre-fix session state when the updated app starts.",
+    ],
+  },
+  {
     version: "0.1.26",
     date: "2026-08-26",
     dateLabel: "Aug 26, 2026",

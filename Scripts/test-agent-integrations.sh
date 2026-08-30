@@ -71,7 +71,7 @@ report_state() {
 import glob, json, sys
 files = sorted(glob.glob(sys.argv[1] + "/*.json"))
 state = json.load(open(files[0]))
-print(state["action"], state.get("actionPreview"), sep="\t")
+print(state["activity"], state["action"], state.get("actionPreview") or "", sep="\t")
 ' "$1"
 }
 
@@ -107,7 +107,7 @@ for agent in claude codex; do
         | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$post_hook --pid $$"
 
     finished_row=$(report_state "$agent_state")
-    if [[ "$finished_row" != $'runningCommand\tswift build' ]]; then
+    if [[ "$finished_row" != $'working\trunningCommand\tswift build' ]]; then
         print -u2 -- "$agent row after a finished tool: $finished_row"
         exit 1
     fi
@@ -121,17 +121,44 @@ for agent in claude codex; do
         exit 1
     fi
 
-    # Claude and Codex end a turn without a closing message, so the row has to hold the work
-    # rather than fall back to the prompt that opened the turn.
+    # Claude remains available between turns. Codex tasks are one-shot from CodeWindow's point
+    # of view, so a finished turn becomes an ended tombstone and leaves the visible list.
     print -r -- '{"session_id":"lifecycle","hook_event_name":"Stop","cwd":"/tmp/codewindow"}' \
         | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$(hook_command "$configuration" Stop) --pid $$"
     settled_row=$(report_state "$agent_state")
-    if [[ "$settled_row" != $'waiting\tswift build' ]]; then
+    expected_activity=$([[ "$agent" == "codex" ]] && print ended || print idle)
+    if [[ "$settled_row" != "$expected_activity"$'\twaiting\tswift build' ]]; then
         print -u2 -- "$agent row after a finished turn: $settled_row"
         exit 1
     fi
 done
 print -- "PASS installed Claude and Codex hook lifecycle"
+
+# Codex reports cancellation separately from normal completion. Both terminal paths must leave
+# an ended state so a chat cannot remain visible after its work has stopped.
+interrupt_state="$temporary_root/state-codex-interrupt"
+/bin/mkdir -p "$interrupt_state"
+print -r -- '{"session_id":"interrupted","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"stop me"}' \
+    | CODEWINDOW_STATE_DIR="$interrupt_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
+print -r -- '{"session_id":"interrupted","hook_event_name":"Interrupt","cwd":"/tmp/codewindow"}' \
+    | CODEWINDOW_STATE_DIR="$interrupt_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" Interrupt) --pid $$"
+if [[ $(report_state "$interrupt_state") != $'ended\twaiting\t' ]]; then
+    print -u2 -- "Codex cancellation did not end its chat"
+    exit 1
+fi
+print -- "PASS Codex cancellation ends its chat"
+
+# Codex attaches agent_id to hook payloads emitted inside child agents. Those events must not
+# create top-level session state of their own.
+subagent_state="$temporary_root/state-codex-subagent"
+/bin/mkdir -p "$subagent_state"
+print -r -- '{"session_id":"parent","hook_event_name":"UserPromptSubmit","agent_id":"child","agent_type":"worker","cwd":"/tmp/codewindow","prompt":"child task"}' \
+    | CODEWINDOW_STATE_DIR="$subagent_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
+if /usr/bin/find "$subagent_state" -maxdepth 1 -name '*.json' -print -quit | /usr/bin/grep -q .; then
+    print -u2 -- "Codex subagent created top-level session state"
+    exit 1
+fi
+print -- "PASS Codex subagents stay out of the chat list"
 
 # An app update replaces the bundled reporter but not the copy the agents execute, so every
 # launch refreshes it. Leave a superseded copy behind and let refresh repair it.

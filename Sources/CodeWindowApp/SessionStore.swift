@@ -108,6 +108,7 @@ final class SessionStore: ObservableObject {
     private func refresh(discoveredProcesses: [TerminalAgentProcess]? = nil) {
         let wasEmpty = sessions.isEmpty
         var hooked: [SessionState] = []
+        var endedProcesses: Set<ProcessStamp> = []
         var nextFeeds = feeds
         // A state file re-offers the events it still carries. Remembering the last run it
         // carried folds each event in exactly once without holding every id ever seen: an
@@ -115,10 +116,16 @@ final class SessionStore: ObservableObject {
         var nextDeliveredEventIDs: [String: Set<UUID>] = [:]
         for entry in StateFiles.all(in: directory) {
             guard let state = entry.state,
-                  state.activity != .ended,
                   ProcessInspector.isCurrent(state.process)
             else {
                 discard(entry.url)
+                continue
+            }
+            if state.activity == .ended {
+                // Keep the file as a tombstone while the agent process remains alive. Codex can
+                // keep a finished chat process around, and process discovery must not re-add it
+                // as an unreported session after the finished row disappears.
+                endedProcesses.insert(state.process)
                 continue
             }
             hooked.append(state)
@@ -135,12 +142,12 @@ final class SessionStore: ObservableObject {
             reportingFailure = failure
         }
 
-        let hookedProcesses = Set(hooked.map(\.process))
+        let representedProcesses = Set(hooked.map(\.process)).union(endedProcesses)
         let diagnostics = discoveredProcesses?.map(PresentedSession.detected)
             ?? sessions.filter(\.isDiagnostic)
         let discovered = diagnostics
             .filter { ProcessInspector.isCurrent($0.process) }
-            .filter { !hookedProcesses.contains($0.process) }
+            .filter { !representedProcesses.contains($0.process) }
             .filter { candidate in
                 // Codex can start a bundled Codex helper beneath the real terminal process.
                 // The helper inherits its TTY and working directory, but it is part of the

@@ -72,7 +72,7 @@ public struct ProcessStamp: Codable, Equatable, Hashable, Sendable {
 }
 
 public struct SessionState: Codable, Equatable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let sessionKey: String

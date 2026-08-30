@@ -96,7 +96,7 @@ public enum HookInstaller {
 
     private static let codexEvents = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop",
-        "SessionEnd",
+        "Interrupt", "SessionEnd",
     ]
     private static let claudeEvents = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
