@@ -390,6 +390,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dock.panelDragDidEnd(moved: true)
         RunLoop.current.run(until: Date().addingTimeInterval(0.20))
         let foldedTop = panel.frame.maxY
+        let topAttachedWorks = abs(foldedTop - dockTarget.maxY) < 1
+        print(
+            "topDockScreen=\(notch == nil ? "notchless" : "notched") "
+                + "topAttached=\(topAttachedWorks)"
+        )
         // A docked island reaches up into the camera housing, so the folded height is the
         // activity bar plus that overlap.
         let housingOverlap = notch == nil ? 0 : TopDockPlacementPolicy.notchOverlap
@@ -399,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && panel.level == .statusBar
             && !panel.hasShadow
             && abs(panel.frame.midX - dockTarget.midX) < 1
+            && topAttachedWorks
             && abs(
                 panel.frame.height
                     - (TopDockPlacementPolicy.capsuleHeight + housingOverlap)
@@ -462,7 +468,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fputs(
                 "top dock smoke failed: folded=\(foldedWorks) unfolded=\(unfoldedWorks) "
                     + "refolded=\(refoldedWorks) resistedPull=\(resistedPullWorks) "
-                    + "restored=\(restoredWorks) pullToDetach=\(pullToDetachWorks)\n",
+                    + "restored=\(restoredWorks) pullToDetach=\(pullToDetachWorks) "
+                    + "topAttached=\(topAttachedWorks)\n",
                 stderr
             )
         }
