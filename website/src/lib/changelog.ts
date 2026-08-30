@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.29",
+    date: "2026-08-31",
+    dateLabel: "Aug 31, 2026",
+    changes: [
+      "Attaches the Top Dock flush to the menu bar or screen edge on Macs and displays without a notch.",
+    ],
+  },
+  {
     version: "0.1.28",
     date: "2026-08-30",
     dateLabel: "Aug 30, 2026",

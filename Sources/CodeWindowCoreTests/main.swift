@@ -180,12 +180,22 @@ func testTopDockPlacement() throws {
     )
     try require(fallback.midX == externalScreen.midX, "Fallback capsule ignored screen origin")
     try require(
-        fallback.maxY == externalVisible.maxY - TopDockPlacementPolicy.edgeGap,
-        "Fallback capsule did not sit below the menu bar"
+        fallback.maxY == externalVisible.maxY,
+        "Notchless capsule did not attach to the top edge"
     )
     try require(
         fallback.height == TopDockPlacementPolicy.capsuleHeight,
         "Fallback capsule borrowed the housing overlap it has nothing to attach to"
+    )
+    let menuBarlessFallback = TopDockPlacementPolicy.dockedFrame(
+        contentSize: CGSize(width: 160, height: 26),
+        notch: nil,
+        screenFrame: externalScreen,
+        visibleFrame: externalScreen
+    )
+    try require(
+        menuBarlessFallback.maxY == externalScreen.maxY,
+        "Notchless capsule did not attach to a menu-bar-free screen edge"
     )
     try require(
         folded.width - notch.width

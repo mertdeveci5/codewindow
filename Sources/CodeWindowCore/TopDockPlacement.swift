@@ -29,7 +29,6 @@ public enum TopDockPlacementPolicy {
     /// How far the activity bar overhangs the housing on each side. This overhang is what
     /// makes the folded island read as hardware growing, not as a pill parked below it.
     public static let notchShoulder: CGFloat = 42
-    public static let edgeGap: CGFloat = 6
 
     /// Derives the camera housing between the two unobscured menu-bar regions.
     public static func notch(
@@ -59,9 +58,9 @@ public enum TopDockPlacementPolicy {
         return max(0, min(notchWidth, room))
     }
 
-    /// Places the folded island so its connector overlaps the camera housing, or just below
-    /// the menu bar on an ordinary display. The attachment stays put while hover and new
-    /// content grow the bar downward and outward.
+    /// Places the folded island so its connector overlaps the camera housing, or flush against
+    /// the menu bar or screen edge on an ordinary display. The attachment stays put while hover
+    /// and new content grow the bar downward and outward.
     public static func dockedFrame(
         contentSize: CGSize,
         notch: CGRect?,
@@ -76,7 +75,7 @@ public enum TopDockPlacementPolicy {
         )
         let centerX = notch?.midX ?? screenFrame.midX
         let top = notch.map { $0.minY + min(notchOverlap, $0.height) }
-            ?? min(visibleFrame.maxY, screenFrame.maxY) - edgeGap
+            ?? min(visibleFrame.maxY, screenFrame.maxY)
         return CGRect(
             x: (centerX - width / 2).rounded(),
             y: (top - height).rounded(),
