@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.28",
+    date: "2026-08-30",
+    dateLabel: "Aug 30, 2026",
+    changes: [
+      "Keeps legacy finished and cancelled chats hidden instead of rediscovering their live terminal processes after an update.",
+    ],
+  },
+  {
     version: "0.1.27",
     date: "2026-08-30",
     dateLabel: "Aug 30, 2026",

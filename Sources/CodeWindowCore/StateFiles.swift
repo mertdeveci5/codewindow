@@ -115,10 +115,26 @@ public enum StateFiles {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
         guard let state = try? decoder.decode(SessionState.self, from: data),
-              state.schemaVersion == SessionState.currentSchemaVersion,
               file.deletingPathExtension().lastPathComponent == state.sessionKey
         else { return nil }
-        return state
+        if state.schemaVersion == SessionState.currentSchemaVersion {
+            return state
+        }
+
+        // Schema 2 changed finished Codex turns into hidden tombstones. Treat every state from
+        // before that fix as finished while its process is still alive, so fallback discovery
+        // cannot recreate an old row after an update. A fresh root hook replaces this file with
+        // current state and makes genuinely active work visible again.
+        guard state.schemaVersion == 1 else { return nil }
+        return SessionState(
+            sessionKey: state.sessionKey,
+            agent: state.agent,
+            activity: .ended,
+            projectLabel: state.projectLabel,
+            action: .waiting,
+            process: state.process,
+            updatedAt: state.updatedAt
+        )
     }
 
     /// Reports every state file, including the ones that no longer decode, so the app can clear

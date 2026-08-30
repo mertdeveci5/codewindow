@@ -651,8 +651,29 @@ func testStateFiles() throws {
     legacyJSON["sessionKey"] = "abc123-legacy"
     let legacyFile = directory.appendingPathComponent("abc123-legacy.json")
     try JSONSerialization.data(withJSONObject: legacyJSON).write(to: legacyFile)
-    try require(StateFiles.read(from: legacyFile) == nil, "Pre-fix state survived schema invalidation")
+    let legacyTombstone = try unwrap(
+        StateFiles.read(from: legacyFile),
+        "Pre-fix state was discarded instead of suppressing process discovery"
+    )
+    try require(
+        legacyTombstone.schemaVersion == SessionState.currentSchemaVersion,
+        "Pre-fix state did not migrate to the current schema"
+    )
+    try require(legacyTombstone.activity == .ended, "Pre-fix state remained visible after migration")
+    try require(legacyTombstone.process == process, "Pre-fix process identity was not preserved")
+    try require(
+        legacyTombstone.taskPreview == nil
+            && legacyTombstone.actionPreview == nil
+            && legacyTombstone.feedEvents.isEmpty,
+        "Pre-fix content leaked into its discovery tombstone"
+    )
     try FileManager.default.removeItem(at: legacyFile)
+    legacyJSON["schemaVersion"] = SessionState.currentSchemaVersion + 1
+    legacyJSON["sessionKey"] = "abc123-unknown"
+    let unknownFile = directory.appendingPathComponent("abc123-unknown.json")
+    try JSONSerialization.data(withJSONObject: legacyJSON).write(to: unknownFile)
+    try require(StateFiles.read(from: unknownFile) == nil, "Unknown state schema was migrated")
+    try FileManager.default.removeItem(at: unknownFile)
     let directoryMode = try unwrap(
         FileManager.default.attributesOfItem(atPath: directory.path)[.posixPermissions] as? NSNumber,
         "Directory permissions missing"
