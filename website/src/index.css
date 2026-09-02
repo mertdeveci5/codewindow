@@ -137,6 +137,13 @@
   --cw-attention: #ff9f0a;
 }
 
+/* Registered so the demo panel's dock affordance can ease in with the drag. */
+@property --dock-proximity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -638,123 +645,9 @@
 
   /* --------------------------------------------------------- panel demo */
 
-  /* Float the panel over the desktop, as the shipping app does. */
-  .panel-float {
-    position: absolute;
-    z-index: 6;
-    top: 56px;
-    right: 34px;
-    pointer-events: none;
-  }
-
-  .cw-panel {
-    width: 296px;
-    padding: 5px;
-    border-radius: 18px;
-    background: var(--cw-surface);
-    box-shadow:
-      inset 0 0 0 0.75px rgb(255 255 255 / 0.08),
-      0 0 0 1px rgb(255 255 255 / 0.13),
-      0 22px 48px -13px rgb(0 0 0 / 0.88),
-      0 5px 14px rgb(0 0 0 / 0.58);
-  }
-
-  .cw-row {
-    position: relative;
-    display: flex;
-    height: 40px;
-    align-items: center;
-    gap: 9px;
-    padding: 0 9px;
-  }
-
-  .cw-row[data-attention="true"] {
-    border-radius: 13px;
-    background: rgb(255 159 10 / 0.16);
-  }
-
-  .cw-row[data-attention="true"] .cw-primary {
-    color: var(--cw-attention);
-  }
-
-  .cw-divider {
-    position: absolute;
-    top: 0;
-    left: 40px; /* rowInset 9 + glyph 22 + gap 9 */
-    right: 9px;
-    height: 0.5px;
-    background: var(--cw-divider);
-  }
-
-  .cw-rail {
-    position: absolute;
-    left: 2px;
-    top: 7px;
-    width: 2px;
-    height: 26px;
-    border-radius: 9999px;
-    background: var(--cw-attention);
-  }
-
-  .cw-glyph {
-    display: flex;
-    width: 22px;
-    height: 22px;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .cw-primary {
-    position: relative;
-    font-size: 12.5px;
-    line-height: 1.15;
-    color: var(--cw-title);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .cw-primary-animated,
-  .terminal-cycle-line {
-    height: 14.375px;
-  }
-
-  .cw-frame-a,
-  .cw-frame-b {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    animation-duration: 8s;
-    animation-iteration-count: infinite;
-    animation-timing-function: ease;
-  }
-
-  .cw-frame-b {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-  }
-
-  .cw-frame-a {
-    animation-name: demo-frame-a;
-  }
-
-  .cw-frame-b {
-    animation-name: demo-frame-b;
-  }
-
-  .cw-meta {
-    display: flex;
-    gap: 4px;
-    margin-top: 1.5px;
-    font-size: 10px;
-    line-height: 1.2;
-    color: var(--cw-meta);
-    white-space: nowrap;
-    overflow: hidden;
-  }
+  /* The scene is a 640×410 desktop; the panel keeps its real 296pt width inside it so
+     the rows read at their true size. Every measurement mirrors PanelMetrics.swift and
+     TopDockPlacementPolicy. */
 
   .scene-scale {
     --scene-scale: 1;
@@ -809,6 +702,8 @@
     transform: rotate(-18deg) scale(1.2);
   }
 
+  /* ------------------------------------------------------------ menu bar */
+
   .macos-menu-bar {
     position: absolute;
     z-index: 4;
@@ -840,9 +735,25 @@
     font-weight: 650;
   }
 
+  .macos-menu-app {
+    animation: demo-fade-in 0.14s ease-out;
+  }
+
   .macos-apple {
     margin-right: 1px;
     font-size: 10px;
+  }
+
+  /* The camera housing. The island grows out of it, so it stays true black. */
+  .macos-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 128px;
+    height: 20px;
+    margin-left: -64px;
+    border-radius: 0 0 8px 8px;
+    background: #000;
   }
 
   .macos-menu-right {
@@ -921,16 +832,60 @@
     background: rgb(255 255 255 / 0.9);
   }
 
-  .terminal-window {
+  /* ------------------------------------------------------------- windows */
+
+  .demo-window {
     position: absolute;
     z-index: 2;
-    top: 38px;
-    right: 24px;
-    bottom: 22px;
-    left: 24px;
     overflow: hidden;
-    border: 1px solid rgb(72 74 87 / 0.82);
     border-radius: 8px;
+  }
+
+  .demo-window[data-front="true"] {
+    z-index: 3;
+  }
+
+  .window-lights {
+    position: absolute;
+    z-index: 2;
+    left: 8px;
+    display: flex;
+    gap: 5px;
+  }
+
+  .window-light {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.22);
+    transition: background-color 0.14s ease;
+  }
+
+  .window-light-close {
+    background: #ff5f57;
+  }
+
+  .window-light-minimize {
+    background: #febc2e;
+  }
+
+  .window-light-zoom {
+    background: #28c840;
+  }
+
+  /* macOS greys the lights of every window that is not in front. */
+  .demo-window[data-front="false"] .window-light {
+    background: rgb(150 150 158 / 0.55);
+  }
+
+  /* ------------------------------------------------------------ terminal */
+
+  .terminal-window {
+    top: 38px;
+    left: 24px;
+    width: 592px;
+    height: 350px;
+    border: 1px solid rgb(72 74 87 / 0.82);
     background:
       radial-gradient(28rem 18rem at 24% 18%, rgb(57 68 104 / 0.1), transparent 70%),
       #09090f;
@@ -948,33 +903,6 @@
     align-items: center;
     border-bottom: 1px solid rgb(255 255 255 / 0.055);
     background: #1d1d25;
-  }
-
-  .terminal-lights {
-    position: absolute;
-    z-index: 2;
-    left: 8px;
-    display: flex;
-    gap: 5px;
-  }
-
-  .terminal-light {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.22);
-  }
-
-  .terminal-light-close {
-    background: #ff5f57;
-  }
-
-  .terminal-light-minimize {
-    background: #febc2e;
-  }
-
-  .terminal-light-zoom {
-    background: #28c840;
   }
 
   .terminal-tabs {
@@ -1022,8 +950,10 @@
   }
 
   .terminal-pane {
+    display: flex;
     min-width: 0;
-    padding: 16px 14px;
+    flex-direction: column;
+    padding: 12px 12px 10px;
     font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
     font-size: 8.5px;
     font-weight: 520;
@@ -1031,85 +961,630 @@
     color: rgb(255 255 255 / 0.82);
   }
 
-  .terminal-pane-primary {
-    border-right: 1px solid rgb(255 255 255 / 0.07);
+  .terminal-pane + .terminal-pane {
+    border-left: 1px solid rgb(255 255 255 / 0.07);
   }
 
   .terminal-pane p {
     margin: 0;
+    overflow: hidden;
+    white-space: pre;
+    text-overflow: ellipsis;
+    animation: demo-fade-in 0.12s ease-out;
   }
 
-  .terminal-spacer {
-    height: 14px;
+  .terminal-blank {
+    height: 6px;
   }
 
-  .terminal-path {
-    color: #49dfb2;
+  .terminal-pane [data-tone="prompt"] {
+    color: rgb(255 255 255 / 0.92);
   }
 
-  .terminal-branch {
-    color: #ff4264;
+  .terminal-pane [data-tone="tool"] {
+    color: rgb(255 255 255 / 0.86);
   }
 
-  .terminal-prompt {
-    color: #28e89a;
+  .terminal-pane [data-tone="result"] {
+    color: rgb(255 255 255 / 0.5);
   }
 
-  .terminal-muted {
-    color: rgb(255 255 255 / 0.43);
+  .terminal-pane [data-tone="muted"] {
+    color: rgb(255 255 255 / 0.4);
   }
 
-  .terminal-cycle-line {
-    position: relative;
-    width: 250px;
-    color: rgb(255 255 255 / 0.58);
+  /* Both agents keep their input anchored at the bottom of the pane. */
+  .terminal-composer {
+    margin-top: auto;
+    padding-top: 8px;
   }
 
-  .terminal-cursor-line {
+  .terminal-input-box {
+    margin-top: 3px !important;
+    padding: 3px 6px;
+    border: 1px solid rgb(255 255 255 / 0.22);
+    border-radius: 3px;
+  }
+
+  .terminal-input-line {
     padding-top: 3px;
+    border-top: 1px solid rgb(255 255 255 / 0.14);
   }
 
-  .terminal-cursor {
+  .terminal-approval {
+    margin-top: 2px;
+    padding: 4px 7px 5px;
+    border: 1px solid rgb(255 255 255 / 0.24);
+    border-radius: 3px;
+    animation: demo-fade-in 0.12s ease-out;
+  }
+
+  .terminal-approval-choice {
+    color: #5ac8fa;
+  }
+
+  /* -------------------------------------------------------------- safari */
+
+  .safari-window {
+    top: 64px;
+    left: 70px;
+    width: 540px;
+    height: 336px;
+    background: #fff;
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.28),
+      0 18px 40px rgb(30 13 0 / 0.5);
+  }
+
+  .safari-toolbar {
+    position: relative;
+    display: flex;
+    height: 30px;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #d5d5da;
+    background: #e9e9ed;
+  }
+
+  .safari-nav {
+    position: absolute;
+    left: 48px;
+    color: #8a8a90;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .safari-address {
     display: block;
-    width: 6px;
+    width: 250px;
+    padding: 4px 8px;
+    overflow: hidden;
+    border-radius: 5px;
+    background: #fff;
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.12);
+    color: #3a3a40;
+    font-size: 7px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .safari-page {
+    padding: 14px 18px;
+    color: #1f2328;
+    font-size: 7.5px;
+    line-height: 1.4;
+  }
+
+  .safari-page p {
+    margin: 0;
+  }
+
+  .safari-pr-title {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .safari-pr-title span {
+    font-weight: 400;
+    color: #656d76;
+  }
+
+  .safari-pr-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px !important;
+    color: #656d76;
+  }
+
+  .safari-pr-meta code {
+    padding: 0 3px;
+    border-radius: 3px;
+    background: #ddf4ff;
+    color: #0969da;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 6.8px;
+  }
+
+  .safari-pr-state {
+    padding: 1.5px 6px;
+    border-radius: 9999px;
+    background: #1f883d;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .safari-pr-tabs {
+    display: flex;
+    gap: 14px;
+    margin-top: 12px !important;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #d0d7de;
+    color: #656d76;
+  }
+
+  .safari-pr-tab-active {
+    position: relative;
+    color: #1f2328;
+    font-weight: 600;
+  }
+
+  .safari-pr-tab-active::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: -6px;
+    left: 0;
+    height: 2px;
+    background: #fd8c73;
+  }
+
+  .safari-diff {
+    margin-top: 10px;
+    overflow: hidden;
+    border: 1px solid #d0d7de;
+    border-radius: 5px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 6.6px;
+    line-height: 1.75;
+  }
+
+  .safari-diff p {
+    padding: 0 8px;
+    overflow: hidden;
+    white-space: pre;
+    text-overflow: ellipsis;
+  }
+
+  .safari-diff-file {
+    padding: 4px 8px !important;
+    border-bottom: 1px solid #d0d7de;
+    background: #f6f8fa;
+    font-weight: 600;
+  }
+
+  .safari-diff [data-kind="hunk"] {
+    background: #ddf4ff;
+    color: #656d76;
+  }
+
+  .safari-diff [data-kind="removed"] {
+    background: #ffebe9;
+  }
+
+  .safari-diff [data-kind="added"] {
+    background: #dafbe1;
+  }
+
+  /* -------------------------------------------------------------- cursor */
+
+  .demo-cursor {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    display: block;
+    opacity: 0;
+    transition:
+      transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.16s ease;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
+  }
+
+  .demo-cursor[data-visible="true"] {
+    opacity: 1;
+  }
+
+  .demo-cursor svg {
+    display: block;
+    transform-origin: 2px 2px;
+    transition: transform 0.1s ease;
+  }
+
+  .demo-cursor[data-pressed="true"] svg {
+    transform: scale(0.88);
+  }
+
+  /* --------------------------------------------------------------- panel */
+
+  /* One body for every state. Dragging follows the cursor's easing; docking, unfolding,
+     and folding use the app's own spring-like timing. */
+  .cw-panel {
+    --panel-move: 0.45s;
+    position: absolute;
+    z-index: 6;
+    top: 0;
+    left: 0;
+    width: 296px;
+    transition:
+      transform var(--panel-move) cubic-bezier(0.4, 0, 0.2, 1),
+      height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 0.12s ease,
+      --dock-proximity 0.45s ease;
+    pointer-events: none;
+  }
+
+  .cw-panel[data-mode="island"],
+  .cw-panel[data-mode="unfolded"] {
+    --panel-move: 0.28s;
+  }
+
+  .cw-panel[data-hidden="true"] {
+    opacity: 0;
+  }
+
+  .cw-surface {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 18px;
+    background: var(--cw-surface);
+    box-shadow:
+      inset 0 0 0 0.75px rgb(255 255 255 / calc(0.08 + 0.34 * var(--dock-proximity))),
+      0 0 0 1px rgb(255 255 255 / 0.1),
+      0 22px 48px -13px rgb(0 0 0 / 0.88),
+      0 5px 14px rgb(0 0 0 / 0.58);
+    transition:
+      border-radius 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .cw-panel[data-mode="island"] .cw-surface {
+    border-radius: 27px;
+    background: #000;
+    box-shadow: none;
+  }
+
+  .cw-panel[data-mode="unfolded"] .cw-surface {
+    border-radius: 27px 27px 18px 18px;
+    background: #000;
+    box-shadow:
+      0 22px 48px -13px rgb(0 0 0 / 0.88),
+      0 5px 14px rgb(0 0 0 / 0.58);
+  }
+
+  /* The black connector reaches 13pt up into the housing, and two concave shoulders
+     carry its walls out to the bar, exactly as TopDockIslandShape draws them. */
+  .cw-connector {
+    position: absolute;
+    top: -13px;
+    right: 84px;
+    left: 84px;
+    height: 13px;
+    background: #000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .cw-connector::before,
+  .cw-connector::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 13px;
+    height: 13px;
+  }
+
+  .cw-connector::before {
+    left: -13px;
+    background: radial-gradient(circle 13px at 0 0, transparent 12.5px, #000 13px);
+  }
+
+  .cw-connector::after {
+    right: -13px;
+    background: radial-gradient(circle 13px at 100% 0, transparent 12.5px, #000 13px);
+  }
+
+  .cw-panel[data-mode="island"] .cw-connector,
+  .cw-panel[data-mode="unfolded"] .cw-connector {
+    opacity: 1;
+  }
+
+  /* A hint of the capsule the panel is about to become, shown as it nears the top. */
+  .cw-dock-affordance {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    width: 44px;
+    height: 3px;
+    margin-left: -22px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.55);
+    opacity: var(--dock-proximity);
+  }
+
+  /* ---------------------------------------------------------- panel rows */
+
+  .cw-list {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    left: 5px;
+    transition:
+      height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 0.16s ease;
+  }
+
+  .cw-panel[data-mode="island"] .cw-list {
+    opacity: 0;
+  }
+
+  .cw-row {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    height: 40px;
+    align-items: center;
+    gap: 9px;
+    padding: 0 9px;
+    border-radius: 13px;
+    transition:
+      transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 0.24s ease,
+      background-color 0.2s ease;
+  }
+
+  .cw-row[data-attention="true"] {
+    background: rgb(255 159 10 / 0.16);
+  }
+
+  .cw-row[data-leaving="true"] {
+    opacity: 0;
+  }
+
+  .cw-divider {
+    position: absolute;
+    top: 0;
+    left: 40px; /* rowInset 9 + glyph 22 + gap 9 */
+    right: 9px;
+    height: 0.5px;
+    background: var(--cw-divider);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .cw-divider[data-visible="true"] {
+    opacity: 1;
+  }
+
+  .cw-glyph {
+    display: flex;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cw-text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 1.5px;
+  }
+
+  .cw-primary {
+    display: block;
+    height: 14.4px;
+    overflow: hidden;
+    font-size: 12.5px;
+    line-height: 1.15;
+    color: var(--cw-title);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition: color 0.18s ease;
+  }
+
+  .cw-primary[data-mono="true"] {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.25;
+  }
+
+  .cw-row[data-attention="true"] .cw-primary {
+    color: var(--cw-attention);
+  }
+
+  .cw-primary-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    animation: demo-fade-in 0.18s ease-out;
+  }
+
+  .cw-meta {
+    display: flex;
+    gap: 4px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--cw-meta);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .cw-status {
+    position: relative;
+    display: flex;
+    width: 10px;
     height: 12px;
-    background: rgb(255 255 255 / 0.72);
+    flex: none;
+    align-items: center;
+    justify-content: center;
   }
 
-  @keyframes demo-frame-a {
-    0%, 20%, 100% {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    24%, 84% {
+  .cw-status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    transition:
+      background-color 0.22s ease,
+      opacity 0.22s ease;
+  }
+
+  .cw-status-alert {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+
+  .cw-status[data-attention="true"] .cw-status-dot {
+    opacity: 0;
+  }
+
+  .cw-status[data-attention="true"] .cw-status-alert {
+    opacity: 1;
+  }
+
+  /* -------------------------------------------------------------- island */
+
+  .cw-island {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 9px 4px 13px;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+  }
+
+  .cw-panel[data-mode="island"] .cw-island {
+    opacity: 1;
+  }
+
+  .cw-island-glyph {
+    display: flex;
+    width: 17px;
+    height: 17px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cw-island-glyph .cw-glyph {
+    transform: scale(0.78);
+  }
+
+  .cw-island-lines {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .cw-island-action {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 12.5px;
+    line-height: 1.15;
+    color: var(--cw-title);
+    overflow-wrap: anywhere;
+  }
+
+  .cw-island-action[data-mono="true"] {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 11.5px;
+  }
+
+  .cw-island-action[data-attention="true"] {
+    color: var(--cw-attention);
+  }
+
+  .cw-island-context {
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--cw-meta);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    opacity: 0.78;
+  }
+
+  /* The active count is its own tinted object, findable before the text is read. */
+  .cw-island-count {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    margin-left: 14px;
+    padding: 3px 7px 3px 6px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--tint) 16%, transparent);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--tint) 22%, transparent);
+    color: var(--tint);
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cw-island-count-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--tint);
+  }
+
+  /* ------------------------------------------------------------- caption */
+
+  .demo-caption {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: flex-start;
+    justify-content: center;
+    margin-top: 0.875rem;
+    padding-inline: 1rem;
+    text-align: center;
+  }
+
+  .demo-caption-text {
+    display: block;
+    max-width: 30rem;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+    color: rgb(255 255 255 / 0.78);
+    animation: demo-fade-in 0.28s ease-out;
+  }
+
+  @keyframes demo-fade-in {
+    from {
       opacity: 0;
-      transform: translateY(-2px);
     }
-    90% {
+    to {
       opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes demo-frame-b {
-    0%, 20%, 88%, 100% {
-      opacity: 0;
-      transform: translateY(2px);
-    }
-    26%, 82% {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .cw-frame-a,
-    .cw-frame-b {
-      animation: none;
-    }
-
-    .cw-frame-b {
-      display: none;
     }
   }
 
@@ -1131,6 +1606,10 @@
     .scene-scale {
       --scene-scale: 0.7;
       margin-bottom: -123px;
+    }
+
+    .demo-caption-text {
+      font-size: 0.875rem;
     }
   }
 

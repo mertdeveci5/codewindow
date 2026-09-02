@@ -4,7 +4,11 @@ This directory contains the CodeWindow website. It uses Vite, React 19, TypeScri
 v4, and coss/Base UI components. The site only has a dark theme.
 
 The product demo rebuilds the panel in HTML and CSS with the measurements from
-`Sources/CodeWindowApp/PanelMetrics.swift`.
+`Sources/CodeWindowApp/PanelMetrics.swift` and plays a scripted loop of the app's real behavior:
+the panel hides while the owning terminal is in front, rows update and re-sort as sessions
+report, a row click returns to the terminal, and a drag to the top docks the panel as the
+island. The beats live in `src/components/demo/script.ts`. During `npm run dev`, add
+`?demo_at=<seconds>` to the URL to freeze the scene at that moment for screenshots.
 
 ## Local development
 
@@ -64,6 +68,7 @@ website/
   src/index.css          design tokens, product page, panel styles
   src/App.tsx            page content
   src/components/        SiteHeader, PanelDemo, AgentMarks
+  src/components/demo/   scripted demo: beats, player hook, desktop, panel
   src/components/ui/     copied coss Button, Dialog, ScrollArea, Spinner
   public/skill.md        setup prompt copied for coding agents
   src/lib/               release links and shared utilities
