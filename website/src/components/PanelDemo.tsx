@@ -2,7 +2,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { DemoCursor, GhosttyWindow, MenuBar, SafariWindow } from "@/components/demo/DemoDesktop";
 import { DemoPanel } from "@/components/demo/DemoPanel";
-import { BEATS, type SceneState } from "@/components/demo/script";
+import { BEATS, islandPresentation, type SceneState } from "@/components/demo/script";
 import {
   useAnimationPreference,
   usePageVisible,
@@ -13,8 +13,9 @@ const SCENE_LABEL =
   "A macOS desktop with a Ghostty terminal running Claude Code and Codex, and a Safari window. " +
   "The CodeWindow panel appears when Safari comes to the front, lists each session's latest " +
   "action, flags the Codex session that needs permission, and hides again when that row is " +
-  "clicked to return to the terminal. Dragged to the top of the screen, the panel becomes an " +
-  "island under the notch that unfolds into the full list on click.";
+  "clicked to return to the terminal. Dragged to the top of the screen, the panel docks as a " +
+  "black island around the camera notch showing the latest agent and a live status; it peeks " +
+  "at the current action on hover and unfolds into the full list on click.";
 
 function MacOSScene({ state }: { state: SceneState }): React.ReactElement {
   return (
@@ -34,7 +35,9 @@ function MacOSScene({ state }: { state: SceneState }): React.ReactElement {
           dockProximity={state.dockProximity}
           drag={state.panelDrag}
           hidden={state.panelHidden}
+          hoveredRow={state.hoveredRow}
           mode={state.panelMode}
+          presentation={islandPresentation(state)}
           rows={state.rows}
         />
         <DemoCursor cursor={state.cursor} />

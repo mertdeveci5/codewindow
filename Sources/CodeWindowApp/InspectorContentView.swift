@@ -6,6 +6,12 @@ struct InspectorContentView: View {
     @ObservedObject var model: InspectorModel
     let hoverChanged: (Bool) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous)
+    }
 
     var body: some View {
         Group {
@@ -16,13 +22,15 @@ struct InspectorContentView: View {
             }
         }
         .frame(width: PanelMetrics.width, height: PanelMetrics.inspectorHeight)
-        .background(PanelPalette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.75)
-                .accessibilityHidden(true)
-        }
+        .clipShape(shape)
+        .cwGlassSurface(
+            in: shape,
+            reduceTransparency: reduceTransparency,
+            increasedContrast: contrast == .increased
+        )
+        .scaleEffect(model.isShown ? 1 : 0.94, anchor: model.anchor)
+        .opacity(model.isShown ? 1 : 0)
+        .blur(radius: model.isShown || reduceMotion ? 0 : 4)
         .onHover(perform: hoverChanged)
     }
 

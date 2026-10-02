@@ -6,6 +6,10 @@ import SwiftUI
 @MainActor
 final class InspectorModel: ObservableObject {
     @Published var session: PresentedSession?
+    /// Drives the spring in and the quick fade out. The window itself stays opaque.
+    @Published var isShown = false
+    /// The inspector grows out of the edge it shares with the panel.
+    @Published var anchor: UnitPoint = .topLeading
 }
 
 final class InspectorPanel: NSPanel {
@@ -105,6 +109,17 @@ final class InspectorController: NSObject {
             within: visibleFrame
         )
         panel.setFrame(frame, display: true, animate: false)
+        let parent = parentPanel.frame
+        let anchor: UnitPoint = if frame.minX >= parent.maxX {
+            .topLeading
+        } else if frame.maxX <= parent.minX {
+            .topTrailing
+        } else if frame.minY >= parent.maxY {
+            .bottom
+        } else {
+            .top
+        }
+        if model.anchor != anchor { model.anchor = anchor }
     }
 
     @objc private func parentGeometryDidChange() {
@@ -119,12 +134,21 @@ final class InspectorController: NSObject {
         if panel.parent !== parentPanel {
             parentPanel.addChildWindow(panel, ordered: .above)
         }
-        let wasVisible = panel.isVisible
-        if !wasVisible {
-            panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
+        panel.alphaValue = 1
+        if !panel.isVisible {
             panel.orderFrontRegardless()
         }
-        animate(panel: panel, to: 1, duration: 0.14)
+        guard !model.isShown else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            model.isShown = true
+            return
+        }
+        // Let the hidden state render once so the spring has somewhere to start from.
+        let generation = transitionGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.transitionGeneration == generation else { return }
+            withAnimation(IslandMotion.present) { self.model.isShown = true }
+        }
     }
 
     private func inspectorPanel() -> InspectorPanel {
@@ -188,27 +212,10 @@ final class InspectorController: NSObject {
             hidePanel(ifCurrent: generation)
             return
         }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.10
-            context.allowsImplicitAnimation = true
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak panel] in
-            Task { @MainActor in
-                guard let self, let panel, self.panel === panel else { return }
-                self.hidePanel(ifCurrent: generation)
-            }
-        }
-    }
-
-    private func animate(panel: NSPanel, to alpha: CGFloat, duration: TimeInterval) {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            panel.alphaValue = alpha
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.allowsImplicitAnimation = true
-            panel.animator().alphaValue = alpha
+        withAnimation(IslandMotion.dismiss) { model.isShown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [weak self, weak panel] in
+            guard let self, let panel, self.panel === panel else { return }
+            self.hidePanel(ifCurrent: generation)
         }
     }
 
@@ -216,7 +223,14 @@ final class InspectorController: NSObject {
         guard transitionGeneration == generation,
               hoveredSessionID == nil,
               !inspectorIsHovered
-        else { return }
+        else {
+            // Hover came back during the fade: finish the trip back in rather than stalling.
+            if panel?.isVisible == true, !model.isShown {
+                let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                withAnimation(reduceMotion ? nil : IslandMotion.present) { model.isShown = true }
+            }
+            return
+        }
         hidePanel()
     }
 
@@ -228,6 +242,7 @@ final class InspectorController: NSObject {
         }
         panel.orderOut(nil)
         model.session = nil
+        model.isShown = false
     }
 
     private func bestScreen(for frame: NSRect) -> NSScreen? {

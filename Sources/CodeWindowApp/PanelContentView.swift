@@ -10,14 +10,15 @@ struct PanelNotice: Equatable, Sendable {
 
 /// An always-on-top Live Activity: every running session remains visible and
 /// each compact row shows its latest safe action.
-/// No timers, no clocks, no repeating animation. The panel only moves when state moves.
+/// No timers and no clocks. The panel only moves when state moves; the one repeating
+/// animation is the docked island's working glyph, which runs only while an agent works.
 struct PanelContentView: View {
     @ObservedObject var store: SessionStore
     @ObservedObject var updateReminder: UpdateReminder
     @ObservedObject var dock: TopDockModel
     @ObservedObject var cloudView: CloudViewController
     let reportFullContentSize: (CGSize) -> Void
-    let reportCapsuleContentSize: (CGSize) -> Void
+    let reportExpandedContentWidth: (CGFloat) -> Void
     let reportScrollableListHeight: (CGFloat) -> Void
     let installHooks: () async -> PanelNotice
     let uninstallHooks: () async -> PanelNotice
@@ -28,9 +29,12 @@ struct PanelContentView: View {
     let hoverSession: (PresentedSession, Bool) -> Void
     let toggleDock: () -> Void
     let revealPanel: () -> Void
-    let unfoldedHoverChanged: (Bool) -> Void
+    let foldPanel: () -> Void
+    let islandHoverChanged: (Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     @AppStorage("hookSetupPromptDismissed") private var hookSetupPromptDismissed = false
     @State private var hooksInstalled: Bool?
     @State private var isInstallingHooks = false
@@ -43,19 +47,25 @@ struct PanelContentView: View {
 
     var body: some View {
         Group {
-            if isFolded {
-                TopDockCapsule(
+            if dock.isDocked {
+                DockedIsland(
                     sessions: store.sessions,
-                    notchWidth: dock.notchWidth,
+                    dock: dock,
                     hooksInstalled: hooksInstalled,
                     reduceMotion: reduceMotion,
-                    reportContentSize: reportCapsuleContentSize
+                    listBody: panelBody,
+                    reportExpandedWidth: reportExpandedContentWidth,
+                    reportListSize: reportFullContentSize,
+                    hoverChanged: islandHoverChanged,
+                    open: revealPanel,
+                    close: foldPanel
                 )
-                .onAppear { reportScrollableListHeight(0) }
             } else {
-                fullPanel
+                floatingPanel
             }
         }
+            .onAppear { reportScrollableListHeight(activeScrollableListHeight) }
+            .onChange(of: activeScrollableListHeight, perform: reportScrollableListHeight)
             .onAppear { showReportingFailure(store.reportingFailure) }
             .onChange(of: store.reportingFailure, perform: showReportingFailure)
             .task {
@@ -137,32 +147,32 @@ struct PanelContentView: View {
             .accessibilityLabel("CodeWindow, agent activity")
     }
 
-    /// True only for the docked capsule; an unfolded dock shows the ordinary panel.
-    private var isFolded: Bool {
-        dock.isDocked && !dock.isUnfolded
-    }
-
-    private var fullPanel: some View {
+    /// The rows and status lines both the floating panel and the unfolded island show.
+    private var panelBody: some View {
         stack
             .padding(PanelMetrics.bezel)
-            // An unfolded island still starts inside the camera housing. The rows begin
-            // below that overlap so nothing important hides under the hardware.
-            .padding(.top, notchInset)
             .frame(width: PanelMetrics.width)
-            .background(isAttachedToNotch ? PanelPalette.island : PanelPalette.surface)
-            .clipShape(panelShape)
-            .contentShape(panelShape)
+    }
+
+    private var floatingShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous)
+    }
+
+    private var floatingPanel: some View {
+        panelBody
+            .clipShape(floatingShape)
+            .cwGlassSurface(
+                in: floatingShape,
+                reduceTransparency: reduceTransparency,
+                increasedContrast: contrast == .increased
+            )
             .overlay {
-                panelShape
-                    .strokeBorder(
-                        Color.white.opacity(
-                            (isAttachedToNotch ? 0 : 0.06) + 0.34 * dock.dockProximity
-                        ),
-                        lineWidth: 0.75
-                    )
+                // Nearing the dock, the edge brightens as the island fades in at the camera.
+                floatingShape
+                    .strokeBorder(Color.white.opacity(0.34 * dock.dockProximity), lineWidth: 0.75)
                     .accessibilityHidden(true)
             }
-            .overlay(alignment: .top) { dockAffordance }
+            .contentShape(floatingShape)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: dock.dockProximity)
             .background {
                 GeometryReader { proxy in
@@ -172,43 +182,6 @@ struct PanelContentView: View {
             .onPreferenceChange(PanelHeightKey.self) { height in
                 reportFullContentSize(CGSize(width: PanelMetrics.width, height: height))
             }
-            .onAppear { reportScrollableListHeight(scrollableListHeight) }
-            .onChange(of: scrollableListHeight, perform: reportScrollableListHeight)
-            .onHover(perform: unfoldedHoverChanged)
-    }
-
-    /// Docked on a camera housing the panel keeps the folded island's silhouette, so
-    /// unfolding grows the same body instead of replacing it with a popover.
-    private var isAttachedToNotch: Bool {
-        dock.isDocked && dock.isAttachedToNotch
-    }
-
-    private var notchInset: CGFloat {
-        isAttachedToNotch ? TopDockPlacementPolicy.notchOverlap : 0
-    }
-
-    private var panelShape: TopDockIslandShape {
-        TopDockIslandShape(
-            connectorWidth: isAttachedToNotch ? dock.notchWidth : 0,
-            connectorDrop: notchInset,
-            topRadius: isAttachedToNotch
-                ? TopDockPlacementPolicy.barTopRadius
-                : PanelMetrics.outerRadius,
-            bottomRadius: PanelMetrics.outerRadius
-        )
-    }
-
-    /// The panel is nearing the magnetic top zone: a hint of the capsule it is about to become.
-    @ViewBuilder
-    private var dockAffordance: some View {
-        if dock.dockProximity > 0 {
-            Capsule()
-                .fill(Color.white.opacity(0.55))
-                .frame(width: 44, height: 3)
-                .padding(.top, PanelMetrics.bezel)
-                .opacity(dock.dockProximity)
-                .accessibilityHidden(true)
-        }
     }
 
     private var stack: some View {
@@ -310,6 +283,11 @@ struct PanelContentView: View {
         isSessionListOverflowing ? listHeight : 0
     }
 
+    /// Only a visible list can scroll; the smaller island states are all drag surface.
+    private var activeScrollableListHeight: CGFloat {
+        !dock.isDocked || dock.isUnfolded ? scrollableListHeight : 0
+    }
+
     private func installAgentHooks() async {
         guard !isInstallingHooks else { return }
         isInstallingHooks = true
@@ -393,17 +371,20 @@ private struct SessionRow: View {
     let select: () -> Void
     let hoverChanged: (Bool) -> Void
 
+    @State private var isHovered = false
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         Button(action: select) {
             header
         }
         .buttonStyle(.plain)
         .background {
-            if session.needsAttention {
-                RoundedRectangle(cornerRadius: PanelMetrics.rowRadius, style: .continuous)
-                    .fill(PanelPalette.attention.opacity(0.16))
-            }
+            // Concentric with the panel: the row radius is the outer radius minus the bezel.
+            RoundedRectangle(cornerRadius: PanelMetrics.rowRadius, style: .continuous)
+                .fill(rowFill)
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
         .overlay(alignment: .top) {
             if showsDivider {
                 PanelPalette.divider
@@ -412,9 +393,18 @@ private struct SessionRow: View {
                     .padding(.trailing, PanelMetrics.rowInsetHorizontal)
             }
         }
-        .onHover(perform: hoverChanged)
+        .onHover { hovered in
+            isHovered = hovered
+            hoverChanged(hovered)
+        }
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint("Activates the terminal for this session")
+    }
+
+    private var rowFill: Color {
+        if session.needsAttention { return PanelPalette.attention.opacity(isHovered ? 0.22 : 0.16) }
+        guard isHovered else { return .clear }
+        return contrast == .increased ? PanelPalette.rowHover.opacity(2) : PanelPalette.rowHover
     }
 
     private var header: some View {

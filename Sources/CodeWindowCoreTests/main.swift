@@ -114,121 +114,131 @@ func testTopDockPlacement() throws {
     )
     try require(notch == CGRect(x: 658, y: 944, width: 196, height: 38), "Notch geometry mismatch")
 
-    let folded = TopDockPlacementPolicy.dockedFrame(
-        contentSize: CGSize(width: 180, height: 26),
-        notch: notch,
-        screenFrame: screen,
-        visibleFrame: visible
-    )
-    try require(folded.midX == notch.midX, "Folded island was not centered on the notch")
+    func frame(
+        _ presentation: IslandPresentation,
+        notch: CGRect?,
+        screen: CGRect,
+        visible: CGRect,
+        expandedWidth: CGFloat = 0,
+        list: CGSize = CGSize(width: 296, height: 120)
+    ) -> CGRect {
+        TopDockPlacementPolicy.islandFrame(
+            size: TopDockPlacementPolicy.islandSize(
+                for: presentation,
+                notch: notch,
+                expandedContentWidth: expandedWidth,
+                listSize: list
+            ),
+            notch: notch,
+            screenFrame: screen,
+            visibleFrame: visible,
+            margin: 18
+        )
+    }
+
+    let compact = frame(.compact, notch: notch, screen: screen, visible: visible)
+    try require(compact.midX == notch.midX, "Compact island was not centered on the camera")
+    try require(compact.maxY == screen.maxY, "Compact island did not pour out of the top bezel")
     try require(
-        folded.maxY == notch.minY + TopDockPlacementPolicy.notchOverlap,
-        "Folded island did not overlap the camera housing"
-    )
-    try require(
-        folded.width == notch.width + TopDockPlacementPolicy.notchShoulder * 2,
-        "Folded island did not overhang the housing on both sides"
-    )
-    try require(
-        folded.width > notch.width + TopDockPlacementPolicy.shoulderRadius * 4,
-        "Activity bar was too narrow for sculpted shoulders to read"
-    )
-    let widestFolded = TopDockPlacementPolicy.dockedFrame(
-        contentSize: CGSize(width: 900, height: 30),
-        notch: notch,
-        screenFrame: screen,
-        visibleFrame: visible
-    )
-    try require(
-        widestFolded.width == TopDockPlacementPolicy.maximumCapsuleWidth,
-        "A long action made the folded island wider than its unfolded panel"
-    )
-    try require(
-        TopDockPlacementPolicy.connectorWidth(
-            notchWidth: notch.width,
-            dockWidth: folded.width
-        ) == notch.width,
-        "Connector did not match the measured housing width"
+        compact.height == notch.height,
+        "Compact island grew below the camera housing instead of flanking it"
     )
     try require(
-        TopDockPlacementPolicy.connectorWidth(notchWidth: notch.width, dockWidth: 120)
-            == 120 - (TopDockPlacementPolicy.shoulderRadius + TopDockPlacementPolicy.barTopRadius) * 2,
-        "Connector did not leave room for both shoulders in a narrow island"
+        compact.width == notch.width
+            + (TopDockPlacementPolicy.compactSideWidth + TopDockPlacementPolicy.bezelFlare) * 2,
+        "Compact island did not leave equal slots on both sides of the camera"
     )
+    let minimal = frame(.minimal, notch: notch, screen: screen, visible: visible)
     try require(
-        TopDockPlacementPolicy.connectorWidth(notchWidth: 0, dockWidth: folded.width) == 0,
-        "A display without a housing produced a connector"
+        minimal.width < compact.width && minimal.width > notch.width,
+        "Minimal island was not a quiet sliver around the housing"
     )
 
-    let unfolded = TopDockPlacementPolicy.unfoldedFrame(
-        contentSize: CGSize(width: 296, height: 360),
-        dockedFrame: folded,
-        visibleFrame: visible,
-        margin: 18
+    let expanded = frame(.expanded, notch: notch, screen: screen, visible: visible, expandedWidth: 250)
+    try require(expanded.maxY == compact.maxY, "Expanding moved the island's top edge")
+    try require(expanded.midX == compact.midX, "Expanding moved the island off the camera")
+    try require(
+        expanded.height == notch.height + TopDockPlacementPolicy.expandedBodyHeight,
+        "Expanded body did not hang below the camera band"
     )
-    try require(unfolded.maxY == folded.maxY, "Unfolding broke the fixed top edge")
-    try require(unfolded.midX == folded.midX, "Unfolded panel drifted off center")
-    try require(visible.insetBy(dx: 18, dy: 18).minY <= unfolded.minY, "Unfolded panel escaped below")
+    try require(expanded.width == compact.width, "A short action shrank the island below its slots")
+    let widest = frame(.expanded, notch: notch, screen: screen, visible: visible, expandedWidth: 900)
+    try require(
+        widest.width == TopDockPlacementPolicy.maximumIslandWidth,
+        "A long action made the island wider than its unfolded panel"
+    )
+
+    let list = frame(.list, notch: notch, screen: screen, visible: visible)
+    try require(list.maxY == compact.maxY && list.midX == compact.midX, "Unfolding moved the island")
+    try require(list.width == 296 && list.height == notch.height + 120, "List size mismatch")
+    let tallList = frame(
+        .list,
+        notch: notch,
+        screen: screen,
+        visible: visible,
+        list: CGSize(width: 296, height: 5_000)
+    )
+    try require(tallList.minY >= visible.minY + 18, "A long list escaped below the screen")
+
+    let stage = TopDockPlacementPolicy.stage(from: compact, to: list, overshoot: 14)
+    try require(
+        stage.maxY == list.maxY && stage.midX == list.midX
+            && stage.width == list.width + 28
+            && stage.height == list.height + 14,
+        "Opening stage did not hold both sizes plus overshoot on a shared top edge and center line"
+    )
+    let closing = TopDockPlacementPolicy.stage(from: list, to: compact)
+    try require(
+        closing.maxY == compact.maxY && closing.midX == compact.midX
+            && closing.width >= list.width && closing.height == list.height
+            && Int(closing.width - compact.width) % 2 == 0,
+        "Closing stage shifted the island off its center line"
+    )
+    let arranged = CGRect(x: 1_920, y: -200, width: 1_512, height: 982)
+    let localNotch = TopDockPlacementPolicy.notch(
+        screenFrame: arranged,
+        topInset: 38,
+        leftArea: CGRect(x: 0, y: 944, width: 658, height: 38),
+        rightArea: CGRect(x: 854, y: 944, width: 658, height: 38)
+    )
+    try require(
+        localNotch == CGRect(x: 2_578, y: 744, width: 196, height: 38),
+        "A notched display away from the origin lost its camera housing"
+    )
+    let globalNotch = TopDockPlacementPolicy.notch(
+        screenFrame: arranged,
+        topInset: 38,
+        leftArea: CGRect(x: 1_920, y: 744, width: 658, height: 38),
+        rightArea: CGRect(x: 2_774, y: 744, width: 658, height: 38)
+    )
+    try require(globalNotch == localNotch, "Global and screen-local housing areas disagreed")
 
     let externalScreen = CGRect(x: -1_920, y: 120, width: 1_920, height: 1_080)
     let externalVisible = CGRect(x: -1_920, y: 120, width: 1_920, height: 1_050)
-    let fallback = TopDockPlacementPolicy.dockedFrame(
-        contentSize: CGSize(width: 160, height: 26),
-        notch: nil,
-        screenFrame: externalScreen,
-        visibleFrame: externalVisible
-    )
-    try require(fallback.midX == externalScreen.midX, "Fallback capsule ignored screen origin")
+    let fallback = frame(.compact, notch: nil, screen: externalScreen, visible: externalVisible)
+    try require(fallback.midX == externalScreen.midX, "Fallback island ignored screen origin")
     try require(
         fallback.maxY == externalVisible.maxY,
-        "Notchless capsule did not attach to the top edge"
+        "Notchless island did not attach below the menu bar"
     )
     try require(
-        fallback.height == TopDockPlacementPolicy.capsuleHeight,
-        "Fallback capsule borrowed the housing overlap it has nothing to attach to"
+        fallback.height == TopDockPlacementPolicy.fallbackBandHeight
+            && fallback.width > fallback.height,
+        "Notchless compact island did not read as a pill"
     )
-    let menuBarlessFallback = TopDockPlacementPolicy.dockedFrame(
-        contentSize: CGSize(width: 160, height: 26),
-        notch: nil,
-        screenFrame: externalScreen,
-        visibleFrame: externalScreen
-    )
+    let menuBarless = frame(.compact, notch: nil, screen: externalScreen, visible: externalScreen)
     try require(
-        menuBarlessFallback.maxY == externalScreen.maxY,
-        "Notchless capsule did not attach to a menu-bar-free screen edge"
-    )
-    try require(
-        folded.width - notch.width
-            >= (TopDockPlacementPolicy.barTopRadius + TopDockPlacementPolicy.shoulderRadius) * 2,
-        "Pill corners overran the concave shoulders that grow from the notch"
-    )
-    let threeLine = TopDockPlacementPolicy.dockedFrame(
-        contentSize: CGSize(width: 120, height: 0),
-        notch: nil,
-        screenFrame: externalScreen,
-        visibleFrame: externalVisible
-    )
-    try require(
-        threeLine.height == TopDockPlacementPolicy.capsuleHeight,
-        "Compact island shrank below its three reserved lines"
-    )
-    try require(
-        // A notchless island is a true pill, so its body must stay wider than it is tall.
-        threeLine.width >= threeLine.height,
-        "Notchless fallback grew taller than it is wide and stopped reading as a pill"
-    )
-    try require(
-        threeLine.width == TopDockPlacementPolicy.minimumCapsuleWidth,
-        "Compact island fell below the width its lines need to be worth reading"
+        menuBarless.maxY == externalScreen.maxY,
+        "Notchless island did not attach to a menu-bar-free screen edge"
     )
 
     try require(
-        TopDockPlacementPolicy.proximity(of: folded, target: folded) == 1,
+        TopDockPlacementPolicy.proximity(of: compact, target: compact) == 1,
         "Exact dock placement did not have full proximity"
     )
-    let corner = folded.offsetBy(dx: TopDockPlacementPolicy.magnetHalfWidth + 1, dy: 0)
+    let corner = compact.offsetBy(dx: TopDockPlacementPolicy.magnetHalfWidth + 1, dy: 0)
     try require(
-        TopDockPlacementPolicy.proximity(of: corner, target: folded) == 0,
+        TopDockPlacementPolicy.proximity(of: corner, target: compact) == 0,
         "Top corner incorrectly entered the magnetic zone"
     )
     try require(
@@ -237,18 +247,70 @@ func testTopDockPlacement() throws {
     )
     try require(
         !TopDockPlacementPolicy.shouldDetach(
-            panelFrame: folded.offsetBy(dx: TopDockPlacementPolicy.detachDistance - 1, dy: 0),
-            dockedFrame: folded
+            panelFrame: compact.offsetBy(dx: TopDockPlacementPolicy.detachDistance - 1, dy: 0),
+            dockedFrame: compact
         ),
         "Dock detached before the deliberate movement threshold"
     )
     try require(
         TopDockPlacementPolicy.shouldDetach(
-            panelFrame: folded.offsetBy(dx: TopDockPlacementPolicy.detachDistance, dy: 0),
-            dockedFrame: folded
+            panelFrame: compact.offsetBy(dx: TopDockPlacementPolicy.detachDistance, dy: 0),
+            dockedFrame: compact
         ),
         "Dock did not detach at the deliberate movement threshold"
     )
+}
+
+func testIslandPresentation() throws {
+    typealias Policy = IslandPresentationPolicy
+    try require(
+        Policy.presentation(hasSessions: false, isUnfolded: false, isHovered: false, isAlerting: false)
+            == .minimal,
+        "An empty island did not rest in its minimal state"
+    )
+    try require(
+        Policy.presentation(hasSessions: true, isUnfolded: false, isHovered: false, isAlerting: false)
+            == .compact,
+        "A running session did not show the compact island"
+    )
+    try require(
+        Policy.presentation(hasSessions: false, isUnfolded: false, isHovered: true, isAlerting: false)
+            == .expanded,
+        "Hovering an empty island did not explain why it is empty"
+    )
+    try require(
+        Policy.presentation(hasSessions: true, isUnfolded: false, isHovered: false, isAlerting: true)
+            == .expanded,
+        "An alert did not briefly expand the island"
+    )
+    try require(
+        Policy.presentation(hasSessions: true, isUnfolded: true, isHovered: true, isAlerting: true)
+            == .list,
+        "An unfolded island collapsed back into a peek"
+    )
+
+    try require(
+        Policy.alert(previous: ["a": .working], current: ["a": .needsAttention]) == .attention,
+        "A session that started waiting on the user did not alert"
+    )
+    try require(
+        Policy.alert(previous: ["a": .needsAttention], current: ["a": .needsAttention]) == nil,
+        "A session that was already waiting alerted again"
+    )
+    try require(
+        Policy.alert(previous: ["a": .working, "b": .idle], current: ["a": .idle, "b": .needsAttention])
+            == .attention,
+        "Attention did not outrank a completion in the same update"
+    )
+    try require(
+        Policy.alert(previous: ["a": .working], current: ["a": .idle]) == .finished,
+        "A finished turn did not alert"
+    )
+    try require(
+        Policy.alert(previous: [:], current: ["a": .idle]) == nil,
+        "A new idle session alerted as if it had finished"
+    )
+    try require(IslandAlert.attention.duration > IslandAlert.finished.duration, "Alert durations")
 }
 
 func testSessionFeed() throws {
@@ -2095,6 +2157,7 @@ func testCoolRunnerCancellationAndOutputLimit() async throws {
 let tests: [(String, () throws -> Void)] = [
     ("inspector placement", testInspectorPlacement),
     ("top dock placement", testTopDockPlacement),
+    ("island presentation", testIslandPresentation),
     ("session feed", testSessionFeed),
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),

@@ -60,6 +60,21 @@ Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeW
 open -a CodeWindow
 ```
 
+## Top dock
+
+Drag the panel to the top center of a screen to dock it. On a Mac with a camera notch it becomes a black island that grows out of the notch, like the Dynamic Island on iPhone. On other displays it becomes a small pill below the menu bar.
+
+The island has four sizes. It always grows down from the top edge:
+
+- With no sessions, it is a thin band around the notch with one gray dot.
+- At rest, it shows the latest agent on the left of the camera. On the right it shows the most urgent status and how many sessions are active. A waveform moves while an agent works, and an orange mark appears when one needs you.
+- Rest the pointer on it to see the current action and project. The island also opens like this for a few seconds when a session starts waiting for you or finishes a turn.
+- Click it to open the full session list. Move the pointer away and it closes again.
+
+Pull the island down or sideways to detach it, or right-click it and choose Detach from Top. VoiceOver reads the island as a button that opens the list, and it announces a session that starts needing attention. Reduce Motion replaces the springs with instant changes and stops the working animation.
+
+On macOS 26 the floating panel and the session detail view use Liquid Glass. Earlier versions of macOS use a dark translucent material. Reduce Transparency makes both opaque.
+
 ## Public Cloud View
 
 Cloud View is an optional, read-only way to follow CodeWindow from another device. Install the
@@ -191,6 +206,16 @@ To copy a `.p12` file as base64 on macOS, run:
 The certificate and its private key must be exported together from Keychain Access. Do not commit the `.p12`, its password, the app-specific password, or the Sparkle key. Increment both `CFBundleShortVersionString` and `CFBundleVersion` for every release.
 
 Local builds remain ad hoc signed by default. A local Developer ID build can set `CODEWINDOW_SIGN_IDENTITY`, `CODEWINDOW_EXPECTED_TEAM_ID`, and a `notarytool` keychain profile before running `./Scripts/package-release.sh`. See [Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+Build with Xcode 26 to include Liquid Glass. Older toolchains still build the app, but without glass.
+
+To check the design without real agents, open the app with fixed sample sessions. This uses a separate state folder and separate preferences, and it never installs hooks:
+
+```sh
+open -n ./build/CodeWindow.app --env CODEWINDOW_PREVIEW=list --args --ui-preview
+```
+
+`CODEWINDOW_PREVIEW` can be `floating`, `minimal`, `compact`, `expanded`, `list`, `inspector`, or `cycle`. `cycle` steps through the docked sizes on its own so the transitions can be recorded.
 
 ## Test
 

@@ -13,8 +13,8 @@ import {
 
 const MENUS: Record<FrontApp, { name: string; items: readonly string[] }> = {
   ghostty: { name: "Ghostty", items: ["File", "Edit", "View", "Terminal", "Window", "Help"] },
-  // Safari's menus stop short of the notch, so nothing hides under the housing.
-  safari: { name: "Safari", items: ["File", "Edit", "View", "History", "Bookmarks", "Window"] },
+  // Safari's menus stop short of the docked island, so nothing hides under it.
+  safari: { name: "Safari", items: ["File", "Edit", "View", "History", "Bookmarks"] },
 };
 
 export function MenuBar({ front }: { front: FrontApp }): React.ReactElement {

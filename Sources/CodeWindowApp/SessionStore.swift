@@ -20,7 +20,9 @@ final class SessionStore: ObservableObject {
     private let discoveryQueue = DispatchQueue(label: "dev.codewindow.process-discovery", qos: .utility)
     private var isDiscovering = false
 
-    init(directory: URL? = nil) throws {
+    /// `discoversTerminalAgents` is off only for the design preview, whose fixtures would
+    /// otherwise share the panel with whatever agents happen to be running.
+    init(directory: URL? = nil, discoversTerminalAgents: Bool = true) throws {
         if let directory {
             self.directory = directory
         } else {
@@ -28,7 +30,7 @@ final class SessionStore: ObservableObject {
         }
         refresh()
         watchDirectory()
-        watchForTerminalAgents()
+        if discoversTerminalAgents { watchForTerminalAgents() }
     }
 
     deinit {
