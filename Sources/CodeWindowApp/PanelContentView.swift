@@ -17,6 +17,7 @@ struct PanelContentView: View {
     @ObservedObject var updateReminder: UpdateReminder
     @ObservedObject var dock: TopDockModel
     @ObservedObject var cloudView: CloudViewController
+    @ObservedObject var inbox: InboxStore
     let reportFullContentSize: (CGSize) -> Void
     let reportExpandedContentWidth: (CGFloat) -> Void
     let reportScrollableListHeight: (CGFloat) -> Void
@@ -44,6 +45,7 @@ struct PanelContentView: View {
     @State private var confirmsCloudTurnOff = false
     @State private var confirmsCloudForget = false
     @State private var notice: PanelNotice?
+    @State private var listContentHeight: CGFloat = 0
 
     var body: some View {
         Group {
@@ -56,17 +58,26 @@ struct PanelContentView: View {
                     listBody: panelBody,
                     reportExpandedWidth: reportExpandedContentWidth,
                     reportListSize: reportFullContentSize,
+                    waitingCount: inbox.isEnabled ? inbox.waiting.count : 0,
                     hoverChanged: islandHoverChanged,
                     open: revealPanel,
                     close: foldPanel
                 )
             } else {
                 floatingPanel
+                    // While the window briefly holds a taller stage, the panel stays pinned to
+                    // the corner it grows from.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
             .onAppear { reportScrollableListHeight(activeScrollableListHeight) }
             .onChange(of: activeScrollableListHeight, perform: reportScrollableListHeight)
             .onAppear { showReportingFailure(store.reportingFailure) }
+            .onChange(of: inbox.deliveryFailure) { failure in
+                guard let failure else { return }
+                show(PanelNotice(message: failure, succeeded: false))
+                inbox.deliveryFailure = nil
+            }
             .onChange(of: store.reportingFailure, perform: showReportingFailure)
             .task {
                 let installed = await checkHooks()
@@ -75,6 +86,14 @@ struct PanelContentView: View {
                 }
             }
             .contextMenu {
+                if inbox.isEnabled, !inbox.waiting.isEmpty {
+                    Button("Answer Next Waiting") { inbox.openOldest() }
+                }
+                Toggle(
+                    "Inbox Mode",
+                    isOn: Binding(get: { inbox.isEnabled }, set: { inbox.setEnabled($0) })
+                )
+                Divider()
                 Button(cloudView.setupTitle) {
                     beginCloudViewAction()
                 }
@@ -223,6 +242,7 @@ struct PanelContentView: View {
         .animation(motion, value: updateReminder.availableVersion)
         .animation(motion, value: notice)
         .animation(motion, value: cloudView.statusPresentation)
+        .animation(motion, value: inbox.isEnabled)
     }
 
     private func beginCloudViewAction() {
@@ -238,6 +258,40 @@ struct PanelContentView: View {
         }
     }
 
+    private enum ListEntry: Identifiable {
+        case waitingHeader
+        case waiting(PresentedSession, InboxItem)
+        case session(PresentedSession)
+
+        /// A session keeps one identity whether it is waiting or working, so moving between
+        /// the sections is the same row traveling, not one row leaving and another arriving.
+        var id: String {
+            switch self {
+            case .waitingHeader: "inbox-waiting-header"
+            case let .waiting(session, _), let .session(session): session.id
+            }
+        }
+    }
+
+    /// Waiting sessions rise into their own section at the top, oldest first; every other
+    /// session keeps the order it always has.
+    private var listEntries: [ListEntry] {
+        guard inbox.isEnabled else { return store.sessions.map(ListEntry.session) }
+        var waitingIDs = Set<String>()
+        var entries: [ListEntry] = []
+        for item in inbox.waiting {
+            guard let session = store.sessions.first(where: { $0.id == item.sessionKey }),
+                  waitingIDs.insert(session.id).inserted
+            else { continue }
+            entries.append(.waiting(session, item))
+        }
+        if !entries.isEmpty || inbox.isClear {
+            entries.insert(.waitingHeader, at: 0)
+        }
+        entries += store.sessions.filter { !waitingIDs.contains($0.id) }.map(ListEntry.session)
+        return entries
+    }
+
     /// The list scrolls once it outgrows `maximumListHeight`. Without this the rows past
     /// the panel edge are clipped by the window and no gesture can ever reach them.
     @ViewBuilder
@@ -246,35 +300,75 @@ struct PanelContentView: View {
             EmptyRow()
                 .transition(.opacity)
         } else {
-            ScrollView(.vertical) {
-                VStack(spacing: 0) {
-                    ForEach(Array(store.sessions.enumerated()), id: \.element.id) { index, session in
-                        SessionRow(
-                            session: session,
-                            showsDivider: index > 0,
-                            reduceMotion: reduceMotion,
-                            hooksInstalled: hooksInstalled,
-                            select: { select(session) },
-                            hoverChanged: { hoverSession(session, $0) }
-                        )
-                        .transition(rowTransition)
+            let entries = listEntries
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            row(for: entry, showsDivider: index > 0 && !isHeader(entries[index - 1]))
+                                .transition(rowTransition)
+                        }
+                    }
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(key: ListHeightKey.self, value: geometry.size.height)
+                        }
                     }
                 }
+                .frame(height: listHeight)
+                .onPreferenceChange(ListHeightKey.self) { listContentHeight = $0 }
+                .onChange(of: inbox.openItemID) { _ in
+                    // An opened card at the bottom of a long list scrolls into view whole.
+                    guard let session = inbox.openItem?.sessionKey else { return }
+                    withAnimation(motion) { proxy.scrollTo(session, anchor: .top) }
+                }
             }
-            .frame(height: listHeight)
         }
     }
 
-    private var listContentHeight: CGFloat {
-        CGFloat(store.sessions.count) * PanelMetrics.rowHeight
+    @ViewBuilder
+    private func row(for entry: ListEntry, showsDivider: Bool) -> some View {
+        switch entry {
+        case .waitingHeader:
+            InboxSectionHeader(
+                count: inbox.waiting.count,
+                isClear: inbox.isClear && inbox.waiting.isEmpty,
+                reduceMotion: reduceMotion
+            )
+        case let .waiting(session, item):
+            WaitingSessionRow(
+                session: session,
+                item: item,
+                isOpen: inbox.openItemID == item.id,
+                showsDivider: showsDivider,
+                reduceMotion: reduceMotion,
+                inbox: inbox,
+                openTerminal: { _ = activateTerminal(session) }
+            )
+        case let .session(session):
+            SessionRow(
+                session: session,
+                showsDivider: showsDivider,
+                reduceMotion: reduceMotion,
+                hooksInstalled: hooksInstalled,
+                select: { select(session) },
+                hoverChanged: { hoverSession(session, $0) }
+            )
+        }
+    }
+
+    private func isHeader(_ entry: ListEntry) -> Bool {
+        if case .waitingHeader = entry { true } else { false }
     }
 
     private var listHeight: CGFloat {
-        min(listContentHeight, PanelMetrics.maximumListHeight)
+        // An open card may need more room than the usual eight rows.
+        let limit = PanelMetrics.maximumListHeight + (inbox.openItemID == nil ? 0 : 200)
+        return min(max(listContentHeight, PanelMetrics.rowHeight), limit)
     }
 
     private var isSessionListOverflowing: Bool {
-        listContentHeight > PanelMetrics.maximumListHeight
+        listContentHeight > PanelMetrics.maximumListHeight + (inbox.openItemID == nil ? 0 : 200)
     }
 
     /// Height of the scrollable band, measured up from the panel's bottom bezel. Zero while
@@ -528,6 +622,14 @@ private struct EmptyRow: View {
         .frame(height: PanelMetrics.rowHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("CodeWindow, no terminal agents")
+    }
+}
+
+private struct ListHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

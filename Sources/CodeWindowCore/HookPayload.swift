@@ -88,7 +88,7 @@ public struct HookPayload: Sendable {
             ),
             toolName: toolName
         )
-        self.submittedText = Self.string(in: json, keys: ["user_prompt", "userPrompt", "prompt"])
+        self.submittedText = Self.userPrompt(Self.string(in: json, keys: ["user_prompt", "userPrompt", "prompt"]))
         self.assistantText = Self.string(
             in: json,
             keys: ["last_assistant_message", "lastAssistantMessage", "assistant_message", "assistantMessage"]
@@ -115,6 +115,48 @@ public struct HookPayload: Sendable {
         )
         self.toolSubjectText = Self.toolSubject(in: toolInputValue, toolName: toolName)
     }
+
+    // MARK: Inbox
+
+    /// What this event asks of the user, if anything. Subagents never wait on the user directly.
+    public var inboxRequest: InboxRequest? {
+        guard !isSubagent else { return nil }
+        switch event {
+        case .turnEnded:
+            return .reply
+        case .permissionRequested:
+            return .permission(
+                tool: toolName ?? "tool",
+                detail: commandText ?? pathText ?? queryText ?? toolSubjectText
+            )
+        default:
+            return nil
+        }
+    }
+
+    /// The agent's whole latest message. Only the inbox keeps it, and only while inbox mode is on.
+    public var fullAssistantMessage: String? { assistantText }
+
+    /// The whole prompt that started a turn, for the inbox's "you asked" line.
+    public var fullPrompt: String? {
+        event == .promptSubmitted && !isSubagent ? submittedText : nil
+    }
+
+    /// The session did something that settles whatever it was waiting on: the user answered in
+    /// the terminal, a tool ran, or the session ended. Turn ends and permission prompts are not
+    /// here, because they are the questions themselves.
+    public var settlesInbox: Bool {
+        guard !isSubagent else { return false }
+        switch event {
+        case .sessionStarted, .promptSubmitted, .toolStarted, .toolFinished, .toolFailed,
+             .interrupted, .sessionEnded:
+            return true
+        case .permissionRequested, .turnEnded, nil:
+            return false
+        }
+    }
+
+    public var endsSession: Bool { event == .sessionEnded }
 
     public func state(
         agent: AgentKind,
@@ -272,6 +314,26 @@ public struct HookPayload: Sendable {
         guard let identity else { return nil }
         let digest = SHA256.hash(data: Data("\(sessionID)\u{0}\(identity)".utf8))
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Claude submits some text it generates itself, such as background-task notifications,
+    /// through the same prompt hook as the user. Those must not replace what the user asked. An
+    /// inbox reply arrives the same way, wrapped, and is unwrapped back to the user's words.
+    static func userPrompt(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        if let marker = raw.range(of: InboxHookOutput.replyPreamble) {
+            var reply = raw[marker.upperBound...]
+            if let end = reply.range(of: "</system-reminder>") {
+                reply = reply[..<end.lowerBound]
+            }
+            let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("<task-notification>") || trimmed.hasPrefix("<system-reminder>") {
+            return nil
+        }
+        return raw
     }
 
     private static func string(in json: [String: Any], keys: [String]) -> String? {

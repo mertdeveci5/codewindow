@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionsCancellable: AnyCancellable?
     private var cloudStateCancellable: AnyCancellable?
     private var cloudView: CloudViewController?
+    private var inbox: InboxStore?
+    private var inboxHotKey: InboxHotKey?
+    private var inboxCancellable: AnyCancellable?
     private var isManuallyHidden = false
     /// The design preview's fixtures belong to this process, so a preview launched from a
     /// terminal would otherwise hide itself whenever that terminal is in front.
@@ -112,12 +115,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let cloudView = CloudViewController(defaults: dockDefaults)
             self.cloudView = cloudView
+            let inbox = InboxStore(stateDirectory: store.directory)
+            self.inbox = inbox
+            CodeWindowMenu.install()
+            if !isSmokeTest {
+                inboxHotKey = InboxHotKey { [weak self] in self?.answerNextWaiting() }
+            }
             let panel = makePanel(
                 store: store,
                 dockDefaults: dockDefaults,
-                cloudView: cloudView
+                cloudView: cloudView,
+                inbox: inbox
             )
             self.panel = panel
+            inboxCancellable = inbox.$openItemID
+                .removeDuplicates()
+                .dropFirst()
+                .sink { [weak self] id in self?.inboxCardDidChange(id) }
 
             if isSmokeTest {
                 panel.orderFrontRegardless()
@@ -226,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.setFrameOrigin(originalOrigin)
                 let momentumMoveWorks = smokeTestMomentumMovement(of: panel, from: originalOrigin)
                 let topDockWorks = smokeTestTopDockInteraction(of: panel)
+                let inboxWorks = smokeTestInbox(inbox: inbox, panel: panel, directory: smokeDirectory)
                 let terminalAutoHideWorks = Self.shouldHidePanel(
                     isManuallyHidden: false,
                     frontmostApplicationOwnsSession: true
@@ -252,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ("trackpad", trackpadMoveWorks),
                     ("momentum", momentumMoveWorks),
                     ("topDock", topDockWorks),
+                    ("inbox", inboxWorks),
                     ("terminalAutoHide", terminalAutoHideWorks),
                     ("overflowInteraction", overflowInteractionWorks),
                     ("screenBounds", validPositionWasPreserved && offscreenPositionWasConstrained),
@@ -320,7 +336,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `--ui-preview` opens the panel over fixed sessions in an isolated state directory and
     /// preferences domain, so the design can be checked on screen without touching real hooks,
     /// sessions, or the user's saved panel position. `CODEWINDOW_PREVIEW` picks the starting
-    /// presentation: floating, minimal, compact (default), expanded, list, or inspector; `cycle`
+    /// presentation: floating, minimal, compact (default), expanded, list, inspector, inbox, or
+    /// inbox-floating; `inbox-cycle` answers each card in turn, and `cycle`
     /// steps through the docked presentations on its own so their transitions can be recorded.
     private static var previewMode: String {
         ProcessInfo.processInfo.environment["CODEWINDOW_PREVIEW"] ?? "compact"
@@ -376,6 +393,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for fixture in fixtures {
             try StateFiles.write(fixture, to: directory)
         }
+        if previewMode.hasPrefix("inbox") {
+            let inbox = try InboxFiles.directory(stateDirectory: directory)
+            try InboxFiles.setEnabled(true, in: inbox)
+            let items = [
+                InboxItem(
+                    sessionKey: "preview-claude",
+                    externalSessionID: "preview-claude",
+                    agent: .claude,
+                    projectLabel: "codewindow",
+                    request: .reply,
+                    message: "The island now springs between its sizes and the panel uses Liquid Glass. "
+                        + "Two things are left:\n\n1. The **website demo** still shows the old capsule.\n"
+                        + "2. I have not tried it on a display without a notch.\n\n"
+                        + "Should I update the demo first, or test the notchless layout?",
+                    task: "make the island feel native",
+                    process: process,
+                    createdAt: now.addingTimeInterval(-420)
+                ),
+                InboxItem(
+                    sessionKey: "preview-codex",
+                    externalSessionID: "preview-codex",
+                    agent: .codex,
+                    projectLabel: "website",
+                    request: .permission(tool: "Bash", detail: "npm run deploy -- --production"),
+                    message: nil,
+                    task: "ship the new landing page",
+                    process: process,
+                    createdAt: now.addingTimeInterval(-90)
+                ),
+                InboxItem(
+                    sessionKey: "preview-pi",
+                    externalSessionID: "preview-pi",
+                    agent: .pi,
+                    projectLabel: "notes",
+                    request: .reply,
+                    message: "Here is the changelog summary. Want me to post it to the team channel?",
+                    task: "summarize the changelog",
+                    process: process,
+                    createdAt: now.addingTimeInterval(-20)
+                ),
+            ]
+            for item in items {
+                try InboxFiles.add(item, in: inbox)
+            }
+        }
         return directory
     }
 
@@ -383,7 +445,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let name = "codewindow.ui-preview"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        defaults.set(previewMode != "floating", forKey: "topDockEnabled")
+        defaults.set(!previewMode.hasSuffix("floating"), forKey: "topDockEnabled")
         return defaults
     }
 
@@ -400,8 +462,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "cycle":
             cyclePreview(step: 0)
+        case "inbox", "inbox-floating":
+            inbox?.openOldest()
+        case "inbox-cycle":
+            inbox?.openOldest()
+            answerPreviewCards()
         default:
             break
+        }
+    }
+
+    /// Answers whatever card is open every couple of seconds, for recording the inbox flow
+    /// from the first card to inbox zero.
+    private func answerPreviewCards() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            guard let self, let inbox = self.inbox, let item = inbox.openItem else { return }
+            if item.request.isPermission {
+                inbox.allow(item)
+            } else {
+                inbox.reply("Sounds good, go ahead.", to: item)
+            }
+            self.answerPreviewCards()
         }
     }
 
@@ -478,6 +559,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return momentumEvent.momentumPhase.contains(.changed)
             && panel.frame.origin == expectedOrigin
             && cursorAfter == cursorBefore
+    }
+
+    /// A waiting session opens into a card that takes typing without activating the app, an
+    /// answer reaches the waiting hook, and the inbox moves on and lets go of the keyboard.
+    private func smokeTestInbox(inbox: InboxStore, panel: FloatingPanel, directory: URL?) -> Bool {
+        guard let directory,
+              let process = ProcessInspector.stamp(pid: getpid()),
+              let root = try? InboxFiles.directory(stateDirectory: directory)
+        else { return false }
+        dock?.detach()
+        panel.orderFrontRegardless()
+        inbox.setEnabled(true)
+        let item = InboxItem(
+            sessionKey: "smoke-session",
+            externalSessionID: "smoke-session",
+            agent: .claude,
+            projectLabel: "codewindow",
+            request: .reply,
+            message: "Ship it?",
+            task: "smoke",
+            process: process
+        )
+        guard (try? InboxFiles.add(item, in: root)) != nil else { return false }
+        inbox.refresh()
+        let listed = inbox.waiting.map(\.id) == [item.id]
+
+        inbox.openOldest()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        let opened = inbox.openItemID == item.id && panel.allowsKeyFocus && panel.isKeyWindow
+
+        inbox.reply("Yes, ship it.", to: item)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        let delivered = InboxFiles.takeResponse(for: item.id, in: root) == .reply("Yes, ship it.")
+        let released = inbox.openItemID == nil && !panel.allowsKeyFocus && !panel.isKeyWindow
+            && inbox.waiting.isEmpty
+
+        InboxFiles.remove(itemID: item.id, in: root)
+        inbox.setEnabled(false)
+        let works = listed && opened && delivered && released
+        if !works {
+            fputs(
+                "inbox smoke failed: listed=\(listed) opened=\(opened) delivered=\(delivered) "
+                    + "released=\(released)\n",
+                stderr
+            )
+        }
+        return works
     }
 
     private func smokeTestTopDockInteraction(of panel: FloatingPanel) -> Bool {
@@ -641,7 +769,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makePanel(
         store: SessionStore,
         dockDefaults: UserDefaults,
-        cloudView: CloudViewController
+        cloudView: CloudViewController,
+        inbox: InboxStore
     ) -> FloatingPanel {
         let panel = FloatingPanel(
             contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelMetrics.initialHeight),
@@ -656,7 +785,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.inspector = inspector
         let dock = TopDockController(panel: panel, defaults: dockDefaults)
         self.dock = dock
-        dock.isInspectorActive = { [weak inspector] in inspector?.isPresenting ?? false }
+        // An open inspector or inbox card, or the moment of reaching inbox zero, holds an
+        // unfolded island open even with the pointer elsewhere.
+        dock.isInspectorActive = { [weak inspector, weak inbox] in
+            (inspector?.isPresenting ?? false) || inbox?.openItemID != nil || inbox?.isClear == true
+        }
         dock.didChangeDockState = { [weak self] in self?.dockStateDidChange() }
 
         let content = PanelContentView(
@@ -664,6 +797,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateReminder: updateReminder,
             dock: dock.model,
             cloudView: cloudView,
+            inbox: inbox,
             reportFullContentSize: { [weak dock] size in
                 dock?.fullContentSizeChanged(to: size)
             },
@@ -797,6 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shouldHide = Self.shouldHidePanel(
             isManuallyHidden: isManuallyHidden,
             frontmostApplicationOwnsSession: !isPreview
+                && inbox?.openItemID == nil
                 && frontmostApplicationOwnsSession(store.sessions)
         )
         if shouldHide {
@@ -826,6 +961,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bundlePath: bundlePath
             )
         }
+    }
+
+    /// ⌃⌥I: bring the panel up wherever the user is and open the session that has waited
+    /// longest. Pressing it is a clear request for the inbox, so it also turns the mode on.
+    private func answerNextWaiting() {
+        guard let inbox else { return }
+        if inbox.openItemID != nil {
+            inbox.close()
+            return
+        }
+        if !inbox.isEnabled { inbox.setEnabled(true) }
+        isManuallyHidden = false
+        if !inbox.openOldest() {
+            // Nothing waiting: show the list so the user sees why.
+            panel?.orderFrontRegardless()
+            dock?.unfold()
+        }
+    }
+
+    /// An open card is where the user is typing: the panel takes key focus, stays on screen even
+    /// over the terminal that owns the session, and a docked island stays unfolded around it.
+    private func inboxCardDidChange(_ itemID: String?) {
+        guard let panel else { return }
+        let isOpen = itemID != nil
+        panel.allowsKeyFocus = isOpen
+        if isOpen {
+            inspector?.dismissImmediately()
+            dock?.unfold()
+            if !panel.isVisible { panel.orderFrontRegardless() }
+            panel.makeKey()
+        } else {
+            if panel.isKeyWindow { panel.resignKey() }
+            dock?.foldIfPointerIsAway()
+        }
+        updatePanelVisibility()
     }
 
     private func activateTerminal(for session: PresentedSession) -> Bool {

@@ -103,14 +103,82 @@ public enum HookInstaller {
         "PermissionRequest", "Notification", "Stop", "SessionEnd",
     ]
 
+    /// How long a permission prompt may wait in the inbox before the agent falls back to its own
+    /// prompt in the terminal.
+    public static let inboxPermissionTimeout = 3_600
+
+    /// One command a configuration must carry for one event, with its exact attributes.
+    struct HookEntry {
+        let event: String
+        let handler: [String: Any]
+
+        var command: String { handler["command"] as? String ?? "" }
+    }
+
+    static func reporterCommand(_ locations: InstallLocations, agent: AgentKind) -> String {
+        "\(shellQuote(locations.installedReporter.path)) --agent \(agent.rawValue)"
+    }
+
+    static func inboxCommand(_ locations: InstallLocations, agent: AgentKind) -> String {
+        reporterCommand(locations, agent: agent) + " --inbox"
+    }
+
+    /// Every command CodeWindow owns in an agent's configuration.
+    public static func ownedCommands(_ locations: InstallLocations, agent: AgentKind) -> Set<String> {
+        [reporterCommand(locations, agent: agent), inboxCommand(locations, agent: agent)]
+    }
+
+    /// Reporting hooks only record state and must never slow the agent down. The inbox hooks are
+    /// the ones that wait: they return at once while inbox mode is off, and otherwise hold the
+    /// session until the user answers.
+    static func codexEntries(_ locations: InstallLocations) -> [HookEntry] {
+        let report = reporterCommand(locations, agent: .codex)
+        let inbox = inboxCommand(locations, agent: .codex)
+        return codexEvents.map {
+            HookEntry(event: $0, handler: ["type": "command", "command": report, "timeout": 2])
+        } + [
+            // Codex replies are queued through its app server, so the turn-end hook only files
+            // the item and returns.
+            HookEntry(event: "Stop", handler: ["type": "command", "command": inbox, "timeout": 5]),
+            HookEntry(event: "PermissionRequest", handler: [
+                "type": "command",
+                "command": inbox,
+                "timeout": inboxPermissionTimeout,
+                "statusMessage": "Waiting for your answer in the CodeWindow inbox",
+            ]),
+        ]
+    }
+
+    static func claudeEntries(_ locations: InstallLocations) -> [HookEntry] {
+        let report = reporterCommand(locations, agent: .claude)
+        let inbox = inboxCommand(locations, agent: .claude)
+        return claudeEvents.map {
+            HookEntry(event: $0, handler: ["type": "command", "command": report, "timeout": 2])
+        } + [
+            // A background Stop hook leaves the terminal free while it waits, and wakes the
+            // session with the reply when the user answers from the inbox.
+            HookEntry(event: "Stop", handler: [
+                "type": "command",
+                "command": inbox,
+                "async": true,
+                "asyncRewake": true,
+            ]),
+            HookEntry(event: "PermissionRequest", handler: [
+                "type": "command",
+                "command": inbox,
+                "timeout": inboxPermissionTimeout,
+            ]),
+        ]
+    }
+
     public static func install(at locations: InstallLocations) throws -> InstallationResult {
         guard FileManager.default.isExecutableFile(atPath: locations.reporterSource.path) else {
             throw InstallerError.reporterMissing
         }
         for configuration in locations.codexConfigurations {
-            try preflightConfiguration(at: configuration, events: codexEvents)
+            try preflightConfiguration(at: configuration, events: events(of: codexEntries(locations)))
         }
-        try preflightConfiguration(at: locations.claudeConfiguration, events: claudeEvents)
+        try preflightConfiguration(at: locations.claudeConfiguration, events: events(of: claudeEntries(locations)))
         try preflightPiExtension(at: locations.piExtension)
         try preflightPiExtension(at: locations.legacyPiExtension)
 
@@ -123,14 +191,10 @@ public enum HookInstaller {
         var changed: [URL] = []
         if try installReporter(at: locations) { changed.append(locations.installedReporter) }
 
-        let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
-        let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
-
         for configuration in locations.codexConfigurations {
             if try updateConfiguration(
                 at: configuration,
-                events: codexEvents,
-                command: codexCommand,
+                entries: codexEntries(locations),
                 operation: .install
             ) {
                 changed.append(configuration)
@@ -139,8 +203,7 @@ public enum HookInstaller {
 
         if try updateConfiguration(
             at: locations.claudeConfiguration,
-            events: claudeEvents,
-            command: claudeCommand,
+            entries: claudeEntries(locations),
             operation: .install
         ) {
             changed.append(locations.claudeConfiguration)
@@ -152,9 +215,9 @@ public enum HookInstaller {
 
     public static func uninstall(at locations: InstallLocations) throws -> InstallationResult {
         for configuration in locations.codexConfigurations {
-            try preflightConfiguration(at: configuration, events: codexEvents)
+            try preflightConfiguration(at: configuration, events: events(of: codexEntries(locations)))
         }
-        try preflightConfiguration(at: locations.claudeConfiguration, events: claudeEvents)
+        try preflightConfiguration(at: locations.claudeConfiguration, events: events(of: claudeEntries(locations)))
 
         return try withRollback(at: installationTargets(locations)) {
             try uninstallPrepared(at: locations)
@@ -163,14 +226,10 @@ public enum HookInstaller {
 
     private static func uninstallPrepared(at locations: InstallLocations) throws -> InstallationResult {
         var changed: [URL] = []
-        let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
-        let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
-
         for configuration in locations.codexConfigurations {
             if try updateConfiguration(
                 at: configuration,
-                events: codexEvents,
-                command: codexCommand,
+                entries: codexEntries(locations),
                 operation: .uninstall
             ) {
                 changed.append(configuration)
@@ -179,8 +238,7 @@ public enum HookInstaller {
 
         if try updateConfiguration(
             at: locations.claudeConfiguration,
-            events: claudeEvents,
-            command: claudeCommand,
+            entries: claudeEntries(locations),
             operation: .uninstall
         ) {
             changed.append(locations.claudeConfiguration)
@@ -260,13 +318,11 @@ public enum HookInstaller {
     }
 
     public static func isInstalled(at locations: InstallLocations) -> Bool {
-        let codexCommand = "\(shellQuote(locations.installedReporter.path)) --agent codex"
-        let claudeCommand = "\(shellQuote(locations.installedReporter.path)) --agent claude"
-        return FileManager.default.isExecutableFile(atPath: locations.installedReporter.path)
+        FileManager.default.isExecutableFile(atPath: locations.installedReporter.path)
             && locations.codexConfigurations.allSatisfy {
-                configuration(at: $0, contains: codexCommand, for: codexEvents)
+                configuration(at: $0, contains: codexEntries(locations))
             }
-            && configuration(at: locations.claudeConfiguration, contains: claudeCommand, for: claudeEvents)
+            && configuration(at: locations.claudeConfiguration, contains: claudeEntries(locations))
             && ((try? String(contentsOf: locations.piExtension, encoding: .utf8).contains(piMarker)) == true)
     }
 
@@ -298,13 +354,12 @@ public enum HookInstaller {
 
     private static func updateConfiguration(
         at url: URL,
-        events: [String],
-        command: String,
+        entries: [HookEntry],
         operation: ConfigurationOperation
     ) throws -> Bool {
         let original = try loadObject(at: url)
-        try validateHookStructure(in: original, events: events, at: url)
-        let updated = mutate(original, events: events, command: command, operation: operation)
+        try validateHookStructure(in: original, events: events(of: entries), at: url)
+        let updated = mutate(original, entries: entries, operation: operation)
         guard !NSDictionary(dictionary: original).isEqual(to: updated) else {
             return false
         }
@@ -319,28 +374,44 @@ public enum HookInstaller {
         return true
     }
 
+    private static func events(of entries: [HookEntry]) -> [String] {
+        var seen = Set<String>()
+        return entries.map(\.event).filter { seen.insert($0).inserted }
+    }
+
+    /// Installing adds each entry once, or brings an older copy of it up to date in place, so a
+    /// new timeout reaches existing installs. Uninstalling removes every command CodeWindow owns
+    /// and leaves everything else exactly as it was.
     private static func mutate(
         _ root: [String: Any],
-        events: [String],
-        command: String,
+        entries: [HookEntry],
         operation: ConfigurationOperation
     ) -> [String: Any] {
         var root = root
         var hooks = root["hooks"] as? [String: Any] ?? [:]
+        let owned = Set(entries.map(\.command))
 
-        for event in events {
+        for event in events(of: entries) {
             var groups = hooks[event] as? [[String: Any]] ?? []
             switch operation {
             case .install:
-                if !groups.contains(where: { groupContains($0, command: command) }) {
-                    groups.append([
-                        "hooks": [["type": "command", "command": command, "timeout": 2]],
-                    ])
+                for entry in entries where entry.event == event {
+                    if let index = groups.firstIndex(where: { groupContains($0, command: entry.command) }) {
+                        var group = groups[index]
+                        var commands = group["hooks"] as? [[String: Any]] ?? []
+                        commands = commands.map {
+                            ($0["command"] as? String) == entry.command ? entry.handler : $0
+                        }
+                        group["hooks"] = commands
+                        groups[index] = group
+                    } else {
+                        groups.append(["hooks": [entry.handler]])
+                    }
                 }
             case .uninstall:
                 groups = groups.compactMap { group in
                     guard var commands = group["hooks"] as? [[String: Any]] else { return group }
-                    commands.removeAll { ($0["command"] as? String) == command }
+                    commands.removeAll { owned.contains($0["command"] as? String ?? "") }
                     guard !commands.isEmpty else { return nil }
                     var group = group
                     group["hooks"] = commands
@@ -368,13 +439,18 @@ public enum HookInstaller {
         return commands.contains { ($0["command"] as? String) == command }
     }
 
-    private static func configuration(at url: URL, contains command: String, for events: [String]) -> Bool {
+    /// True only when every entry is present with exactly the attributes this build installs.
+    private static func configuration(at url: URL, contains entries: [HookEntry]) -> Bool {
         guard let root = try? loadObject(at: url), let hooks = root["hooks"] as? [String: Any] else {
             return false
         }
-        return events.allSatisfy { event in
-            let groups = hooks[event] as? [[String: Any]] ?? []
-            return groups.contains { groupContains($0, command: command) }
+        return entries.allSatisfy { entry in
+            let groups = hooks[entry.event] as? [[String: Any]] ?? []
+            return groups.contains { group in
+                (group["hooks"] as? [[String: Any]] ?? []).contains {
+                    NSDictionary(dictionary: $0).isEqual(to: entry.handler)
+                }
+            }
         }
     }
 
@@ -442,14 +518,23 @@ public enum HookInstaller {
         return #"""
         \#(piMarker)
         import { spawn } from "node:child_process";
+        import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+        import { homedir } from "node:os";
+        import { join } from "node:path";
 
         const reporter = \#(encodedPath);
         const activeTools = new Map();
+        const inboxRoot = join(
+          process.env.CODEWINDOW_STATE_DIR || join(homedir(), "Library", "Application Support", "CodeWindow", "State"),
+          "Inbox",
+        );
+        let lastAssistantMessage;
+        let inboxTimer;
 
-        function report(event, ctx, details = {}) {
+        function report(event, ctx, details = {}, extraArguments = []) {
           let child;
           try {
-            child = spawn(reporter, ["--agent", "pi", "--pid", String(process.pid)], {
+            child = spawn(reporter, ["--agent", "pi", "--pid", String(process.pid), ...extraArguments], {
               stdio: ["pipe", "ignore", "ignore"],
             });
           } catch {
@@ -487,8 +572,54 @@ public enum HookInstaller {
           return text || undefined;
         }
 
+        function readJSON(path) {
+          try {
+            return JSON.parse(readFileSync(path, "utf8"));
+          } catch {
+            return undefined;
+          }
+        }
+
+        // Replies the user writes in the CodeWindow inbox arrive as files addressed to a session.
+        // Each one is consumed once and handed to Pi as if it had been typed.
+        function deliverInboxReplies(pi, ctx) {
+          if (!existsSync(join(inboxRoot, ".enabled"))) return;
+          let names;
+          try {
+            names = readdirSync(join(inboxRoot, "Responses"));
+          } catch {
+            return;
+          }
+          let sessionId;
+          try {
+            sessionId = ctx.sessionManager.getSessionId();
+          } catch {
+            return;
+          }
+          for (const name of names) {
+            if (!name.endsWith(".json")) continue;
+            const item = readJSON(join(inboxRoot, "Items", name));
+            if (!item || item.agent !== "pi" || item.externalSessionID !== sessionId) continue;
+            const response = readJSON(join(inboxRoot, "Responses", name));
+            rmSync(join(inboxRoot, "Responses", name), { force: true });
+            rmSync(join(inboxRoot, "Items", name), { force: true });
+            if (response?.kind !== "reply" || typeof response.text !== "string" || !response.text.trim()) continue;
+            try {
+              if (ctx.isIdle()) pi.sendUserMessage(response.text);
+              else pi.sendUserMessage(response.text, { deliverAs: "followUp" });
+            } catch {
+              // A session that was replaced mid-delivery has nobody left to answer.
+            }
+          }
+        }
+
         export default function (pi) {
-          pi.on("session_start", (_event, ctx) => report("session_start", ctx));
+          pi.on("session_start", (_event, ctx) => {
+            report("session_start", ctx);
+            clearInterval(inboxTimer);
+            inboxTimer = setInterval(() => deliverInboxReplies(pi, ctx), 750);
+            inboxTimer.unref?.();
+          });
           pi.on("before_agent_start", (event, ctx) => report("before_agent_start", ctx, {
             userPrompt: event.prompt,
           }));
@@ -513,10 +644,19 @@ public enum HookInstaller {
               toolFailed: event.isError,
             });
           });
-          pi.on("message_end", (event, ctx) => report("message_end", ctx, {
-            assistantMessage: visibleAssistantText(event.message),
-          }));
-          pi.on("session_shutdown", (_event, ctx) => report("session_shutdown", ctx));
+          pi.on("message_end", (event, ctx) => {
+            const assistantMessage = visibleAssistantText(event.message);
+            if (assistantMessage) lastAssistantMessage = assistantMessage;
+            report("message_end", ctx, { assistantMessage });
+          });
+          // Settled means Pi is idle and waiting for the user: the moment the inbox files a reply.
+          pi.on("agent_settled", (_event, ctx) => report("agent_settled", ctx, {
+            assistantMessage: lastAssistantMessage,
+          }, ["--inbox"]));
+          pi.on("session_shutdown", (_event, ctx) => {
+            clearInterval(inboxTimer);
+            report("session_shutdown", ctx);
+          });
         }
         """#
     }

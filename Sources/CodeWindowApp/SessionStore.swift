@@ -12,7 +12,7 @@ final class SessionStore: ObservableObject {
     /// the alternative is a panel that quietly stops moving with no way to tell why.
     @Published private(set) var reportingFailure: String?
 
-    private let directory: URL
+    let directory: URL
     private var directorySource: DispatchSourceFileSystemObject?
     private var processSources: [String: DispatchSourceProcess] = [:]
     private var discoveryTimer: DispatchSourceTimer?

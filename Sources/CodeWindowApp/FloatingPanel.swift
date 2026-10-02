@@ -67,7 +67,11 @@ final class FloatingPanel: NSPanel {
         set { canvasContainer.canvasSize = newValue }
     }
 
-    override var canBecomeKey: Bool { false }
+    /// True only while an inbox card is open. The panel then takes typing like Spotlight does,
+    /// without activating CodeWindow or taking the menu bar from the app the user is in.
+    var allowsKeyFocus = false
+
+    override var canBecomeKey: Bool { allowsKeyFocus }
     override var canBecomeMain: Bool { false }
 
     func installContent(_ view: NSView) {
