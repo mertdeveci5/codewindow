@@ -8,6 +8,17 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.32",
+    date: "2026-10-02",
+    dateLabel: "Oct 2, 2026",
+    changes: [
+      "Adds Inbox mode: sessions waiting on you rise to the top of the panel, and each one opens in place to reply or approve, down to inbox zero. Press ⌃⌥I from anywhere.",
+      "Redesigns the Top Dock as a Dynamic Island that grows out of the camera notch and springs between sizes, with a live working indicator.",
+      "Uses Liquid Glass for the floating panel and session details on macOS 26.",
+      "Adds VoiceOver actions and announcements, and respects Reduce Motion, Reduce Transparency, and Increase Contrast.",
+    ],
+  },
+  {
     version: "0.1.31",
     date: "2026-10-02",
     dateLabel: "Oct 2, 2026",
