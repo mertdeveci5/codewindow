@@ -94,7 +94,7 @@ public struct InstallationResult: Sendable {
 public enum HookInstaller {
     public static let piMarker = "// CodeWindow managed extension"
 
-    private static let codexEvents = [
+    static let codexEvents = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop",
         "Interrupt", "SessionEnd",
     ]
@@ -596,7 +596,7 @@ public enum HookInstaller {
         return permissions.intValue
     }
 
-    private static func shellQuote(_ value: String) -> String {
+    static func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }

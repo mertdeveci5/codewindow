@@ -52,4 +52,4 @@ fi
 /usr/bin/open "$target"
 ```
 
-Restart any Codex, Claude Code, or Pi sessions that were already open. In Codex, run `/hooks` and trust the CodeWindow hooks if asked.
+CodeWindow saves permission for its own Codex hooks during setup; no separate `/hooks` review is needed. If an already-running session does not report activity, restart that agent. Sessions already reporting do not need restarting when you reopen CodeWindow.

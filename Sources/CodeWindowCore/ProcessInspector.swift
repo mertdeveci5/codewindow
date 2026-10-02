@@ -218,7 +218,7 @@ public enum ProcessInspector {
         return result == size ? Int32(info.pbsi_ppid) : nil
     }
 
-    private static func executablePath(pid: Int32) -> String {
+    static func executablePath(pid: Int32) -> String {
         var bytes = [UInt8](repeating: 0, count: Int(MAXPATHLEN) * 4)
         let length = bytes.withUnsafeMutableBytes {
             proc_pidpath(pid, $0.baseAddress, UInt32($0.count))

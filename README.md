@@ -19,11 +19,11 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.29-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.30-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
-5. Choose Install when CodeWindow offers to connect your agents. You can also right-click the panel and choose Install or update agent hooks.
+5. Choose Connect when CodeWindow offers to connect your agents. You can also right-click the panel and choose Install or update agent hooks.
 
 Public releases are signed with a Developer ID Application certificate and notarized by Apple. The release workflow also staples the notarization ticket to the app and checks it with Gatekeeper before publishing.
 
@@ -38,11 +38,11 @@ You can also install them from Terminal:
 open -a CodeWindow
 ```
 
-Restart any Codex, Claude Code, or Pi sessions that were already running.
+Existing sessions may need to reload their hooks. If live activity does not appear, restart that agent. Sessions already reporting to CodeWindow do not need restarting when you reopen the app.
 
-Codex asks you to review new command hooks. Run `/hooks` inside Codex, find the CodeWindow entries, and trust them. CodeWindow does not bypass this check.
+Connecting also saves permission for CodeWindow's own Codex hooks through Codex's configuration API. You do not need to review them separately in `/hooks`. Other hooks keep their existing trust and enabled settings.
 
-If a row says `hooks not reporting`, that session has not loaded the hooks yet. Restart the session. For Codex, also check `/hooks`.
+If a row says `hooks not reporting`, restart the session. If it still does not report, choose Install or update agent hooks to reconnect.
 
 Run the installer again after replacing CodeWindow with a newer version. This updates the small reporter used by the hooks.
 
