@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inbox: InboxStore?
     private var inboxHotKey: InboxHotKey?
     private var inboxCancellable: AnyCancellable?
+    private var inboxVisibilityCancellable: AnyCancellable?
     private var isManuallyHidden = false
     /// The design preview's fixtures belong to this process, so a preview launched from a
     /// terminal would otherwise hide itself whenever that terminal is in front.
@@ -132,6 +133,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .removeDuplicates()
                 .dropFirst()
                 .sink { [weak self] id in self?.inboxCardDidChange(id) }
+            // A session landing in the inbox brings the panel back over the terminal at once.
+            inboxVisibilityCancellable = inbox.objectWillChange
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.updatePanelVisibility() }
 
             if isSmokeTest {
                 panel.orderFrontRegardless()
@@ -247,6 +252,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ) && !Self.shouldHidePanel(
                     isManuallyHidden: false,
                     frontmostApplicationOwnsSession: false
+                ) && !Self.shouldHidePanel(
+                    isManuallyHidden: false,
+                    frontmostApplicationOwnsSession: true,
+                    inboxNeedsUser: true
+                ) && Self.shouldHidePanel(
+                    isManuallyHidden: true,
+                    frontmostApplicationOwnsSession: false,
+                    inboxNeedsUser: true
                 )
                 // Named checks rather than one conjunction: a failing run has to say which
                 // check failed, or the next person reads `false` and starts guessing.
@@ -931,8 +944,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shouldHide = Self.shouldHidePanel(
             isManuallyHidden: isManuallyHidden,
             frontmostApplicationOwnsSession: !isPreview
-                && inbox?.openItemID == nil
-                && frontmostApplicationOwnsSession(store.sessions)
+                && frontmostApplicationOwnsSession(store.sessions),
+            inboxNeedsUser: inboxNeedsUser
         )
         if shouldHide {
             inspector?.dismissImmediately()
@@ -944,11 +957,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The panel steps aside while the user looks at a terminal running a session, like
+    /// picture-in-picture. Inbox mode is the exception: its job is to say that another agent is
+    /// waiting while the user is busy in a terminal, so it stays up whenever someone is waiting.
     nonisolated private static func shouldHidePanel(
         isManuallyHidden: Bool,
-        frontmostApplicationOwnsSession: Bool
+        frontmostApplicationOwnsSession: Bool,
+        inboxNeedsUser: Bool = false
     ) -> Bool {
-        isManuallyHidden || frontmostApplicationOwnsSession
+        isManuallyHidden || (frontmostApplicationOwnsSession && !inboxNeedsUser)
+    }
+
+    private var inboxNeedsUser: Bool {
+        guard let inbox, inbox.isEnabled else { return false }
+        return !inbox.waiting.isEmpty || inbox.openItemID != nil
     }
 
     private func frontmostApplicationOwnsSession(_ sessions: [PresentedSession]) -> Bool {

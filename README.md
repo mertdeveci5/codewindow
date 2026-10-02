@@ -4,7 +4,7 @@ CodeWindow is a small Mac app that shows what terminal coding agents are doing. 
 
 The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, a web page, a tool target, or a request for permission.
 
-CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. Process ancestry lets the same behavior work with integrated terminals.
+CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. In inbox mode it stays visible while an agent is waiting for you. Process ancestry lets the same behavior work with integrated terminals.
 
 Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. When enough sessions are running for the rows to scroll, use the grab strip above them to move the panel; gestures over the rows scroll the list. You can also move the panel by clicking and dragging the grab strip or background.
 
@@ -89,7 +89,7 @@ Click a waiting session, or press ⌃⌥I, and its row opens into a card. The ca
 
 After you answer, the card closes and its session moves back down with the working sessions. The next waiting session then opens. When nothing is left, the section shows **Inbox zero** for a moment and closes.
 
-The panel takes your typing while a card is open, without switching apps. It stays visible even over the terminal that owns the session.
+The panel takes your typing while a card is open, without switching apps. While anything is waiting, the panel stays visible even over the terminal where your agents run, so you see a waiting session while you work in another one.
 
 How each agent gets your answer:
 
