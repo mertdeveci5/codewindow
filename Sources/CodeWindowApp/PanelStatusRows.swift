@@ -39,7 +39,7 @@ struct HookSetupRow: View {
                 Text("Connect your agents")
                     .font(.system(size: PanelMetrics.actionSize, weight: .regular))
                     .foregroundStyle(PanelPalette.title)
-                Text("Install hooks for live updates")
+                Text("Enable live activity reporting")
                     .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                     .foregroundStyle(PanelPalette.meta)
                     .fixedSize(horizontal: false, vertical: true)
@@ -48,7 +48,7 @@ struct HookSetupRow: View {
             Spacer(minLength: 4)
 
             Button(action: install) {
-                Text(isInstalling ? "Installing…" : "Install")
+                Text(isInstalling ? "Connecting…" : "Connect")
                     .font(.system(size: PanelMetrics.metaSize, weight: .medium))
                     .foregroundStyle(PanelPalette.title)
                     .padding(.horizontal, 8)
@@ -142,8 +142,6 @@ struct CloudViewStatusRow: View {
 }
 
 struct HookRestartRow: View {
-    let showsCodexTrustStep: Bool
-
     var body: some View {
         HStack(spacing: PanelMetrics.glyphGap) {
             Image(systemName: "arrow.clockwise.circle.fill")
@@ -155,7 +153,7 @@ struct HookRestartRow: View {
                 Text("Finish connecting your agents")
                     .font(.system(size: PanelMetrics.actionSize, weight: .regular))
                     .foregroundStyle(PanelPalette.title)
-                Text(subtitle)
+                Text("Restart agents if live updates do not appear")
                     .font(.system(size: PanelMetrics.metaSize, weight: .regular))
                     .foregroundStyle(PanelPalette.meta)
                     .fixedSize(horizontal: false, vertical: true)
@@ -165,12 +163,7 @@ struct HookRestartRow: View {
         }
         .panelStatusRow()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Finish connecting your agents. \(subtitle).")
-    }
-
-    private var subtitle: String {
-        if showsCodexTrustStep { return "Restart Codex, then trust hooks in /hooks" }
-        return "Restart agents to start live updates"
+        .accessibilityLabel("Finish connecting your agents. Restart agents if live updates do not appear.")
     }
 }
 

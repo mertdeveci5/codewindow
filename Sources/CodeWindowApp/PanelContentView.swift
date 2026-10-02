@@ -226,11 +226,7 @@ struct PanelContentView: View {
                 .transition(.opacity)
             }
             if hooksInstalled == true, store.sessions.contains(where: \.isDiagnostic) {
-                HookRestartRow(
-                    showsCodexTrustStep: store.sessions.contains {
-                        $0.isDiagnostic && $0.agent == .codex
-                    }
-                )
+                HookRestartRow()
                     .transition(.opacity)
             }
             if let availableVersion = updateReminder.availableVersion {

@@ -149,9 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let diagnosticGuidanceWorks =
                     diagnosticFixture.metadataLabel(hooksInstalled: nil) == "checking setup"
                     && diagnosticFixture.metadataLabel(hooksInstalled: false) == "setup needed"
-                    && diagnosticFixture.metadataLabel(hooksInstalled: true) == "restart needed"
+                    && diagnosticFixture.metadataLabel(hooksInstalled: true) == "waiting for hooks"
                     && diagnosticFixture.accessibilityDescription(hooksInstalled: true)
-                        .contains("trust hooks if prompted")
+                        .contains("restart the agent if updates do not appear")
                 let workingFixture = PresentedSession.reported(SessionState(
                     sessionKey: "smoke-preview",
                     agent: .claude,
@@ -533,6 +533,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return await self.uninstallHooks()
             },
             checkHooks: { [weak self] in
+                // The UI smoke test must not install or grant trust in the real user's profiles.
+                if CommandLine.arguments.contains("--smoke-test") { return true }
                 guard let self else { return false }
                 // Repair before reporting: a build that adds a hook event would otherwise show
                 // the setup prompt for the moment between the check and the refresh.
@@ -688,7 +690,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard result.terminationStatus == 0 else {
             return PanelNotice(message: Self.installerFailureMessage(result.output), succeeded: false)
         }
-        return PanelNotice(message: "hooks installed · restart agents, then run /hooks", succeeded: true)
+        return PanelNotice(message: "agents connected", succeeded: true)
     }
 
     private func hooksAreInstalled() async -> Bool {

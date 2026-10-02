@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.30",
+    date: "2026-10-02",
+    dateLabel: "Oct 2, 2026",
+    changes: [
+      "Saves permission for CodeWindow's Codex hooks when you connect your agents, removing the separate manual hook review.",
+      "Preserves other hooks and disabled settings, and refreshes CodeWindow's hook permissions after updates.",
+    ],
+  },
+  {
     version: "0.1.29",
     date: "2026-08-31",
     dateLabel: "Aug 31, 2026",

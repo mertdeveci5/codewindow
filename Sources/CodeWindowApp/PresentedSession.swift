@@ -75,7 +75,7 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
         switch hooksInstalled {
         case nil: return "checking setup"
         case .some(false): return "setup needed"
-        case .some(true): return "restart needed"
+        case .some(true): return "waiting for hooks"
         }
     }
 
@@ -121,7 +121,7 @@ enum PresentedSession: Equatable, Identifiable, Sendable {
 
     func accessibilityDescription(hooksInstalled: Bool?) -> String {
         guard isDiagnostic, hooksInstalled == true else { return accessibilityDescription }
-        return accessibilityDescription + ", restart the agent and trust hooks if prompted"
+        return accessibilityDescription + ", waiting for activity; restart the agent if updates do not appear"
     }
 
     var updatedAt: Date {

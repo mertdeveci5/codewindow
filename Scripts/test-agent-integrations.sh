@@ -26,7 +26,7 @@ fi
     '{"model":"keep-me","hooks":{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"/usr/bin/existing-hook"}]}]}}' \
     > "$home/.claude/settings.json"
 /usr/bin/printf '%s\n' \
-    '{"model":"keep-me","hooks":{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"/usr/bin/existing-hook"}]}]}}' \
+    '{"description":"keep-me","hooks":{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"/usr/bin/existing-hook"}]}]}}' \
     > "$home/.codex/hooks.json"
 /usr/bin/printf '%s\n' 'model = "keep-me"' > "$home/.codex/config.toml"
 /usr/bin/printf '%s\n' \
@@ -260,3 +260,7 @@ for configuration in "$home/.claude/settings.json" "$home/.codex/hooks.json"; do
 done
 
 print -- "PASS packaged agent install, migration, lifecycle, and uninstall"
+
+if command -v codex >/dev/null 2>&1; then
+    /usr/bin/python3 "$repo_dir/Scripts/test-codex-hook-trust.py" "$helper"
+fi

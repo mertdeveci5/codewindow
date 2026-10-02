@@ -104,15 +104,17 @@ let locations = InstallLocations.detectingCodexProfiles(
 )
 let commands = Set(["install", "refresh", "uninstall", "status"])
 let command = CommandLine.arguments.dropFirst().first { commands.contains($0) } ?? "status"
+let codex = CodexHookTrust.discovered(home: home)
 
 do {
     switch command {
     case "install":
         let result = try HookInstaller.install(at: locations)
+        try codex?.trust(at: locations)
         print(result.changed.isEmpty ? "CodeWindow hooks are already installed." : "Installed CodeWindow hooks.")
         let profiles = locations.codexHomes.map(\.lastPathComponent).joined(separator: ", ")
         print("Codex profiles: \(profiles)")
-        print("Codex: start a new session, run /hooks, and trust the CodeWindow entries.")
+        print("Agents connected. If an existing session does not report activity, restart that agent.")
         if overriddenHome == nil {
             recordInstallationIfNeeded(executable: executable, locations: locations)
         }
@@ -124,16 +126,25 @@ do {
         if !FileManager.default.isExecutableFile(atPath: locations.installedReporter.path) {
             print("CodeWindow hooks are not installed.")
         } else if HookInstaller.isInstalled(at: locations), HookInstaller.isUpToDate(at: locations) {
+            try codex?.trust(at: locations)
             print("CodeWindow hooks are up to date.")
         } else {
             let result = try HookInstaller.install(at: locations)
+            try codex?.trust(at: locations)
             print(result.changed.isEmpty ? "CodeWindow hooks are up to date." : "Refreshed CodeWindow hooks.")
         }
     case "uninstall":
+        do {
+            try codex?.remove(at: locations)
+        } catch {
+            // Removing the commands and reporter must still work if Codex itself is broken.
+            fputs("CodeWindow could not clean up inactive Codex trust records: \(error)\n", stderr)
+        }
         let result = try HookInstaller.uninstall(at: locations)
         print(result.changed.isEmpty ? "CodeWindow hooks were not installed." : "Uninstalled CodeWindow hooks.")
     case "status":
-        let installed = HookInstaller.isInstalled(at: locations)
+        let installed = try HookInstaller.isInstalled(at: locations)
+            && (codex?.isTrusted(at: locations) ?? true)
         print(installed ? "installed" : "not installed")
         if !installed { exit(1) }
     default:
