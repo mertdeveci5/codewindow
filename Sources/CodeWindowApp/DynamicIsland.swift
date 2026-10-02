@@ -5,16 +5,18 @@ import SwiftUI
 /// changes size. Its top band is the camera housing itself, with a slot on each side of the
 /// camera; whatever the current presentation adds hangs below that band. Nothing inside is
 /// bolder than medium weight: hierarchy comes from size, opacity, spacing, and color.
-struct DockedIsland<ListBody: View>: View {
+struct DockedIsland<ListBody: View, InboxBody: View>: View {
     let sessions: [PresentedSession]
     @ObservedObject var dock: TopDockModel
     let hooksInstalled: Bool?
     let reduceMotion: Bool
     let listBody: ListBody
+    let inboxBody: InboxBody
     let reportExpandedWidth: (CGFloat) -> Void
     let reportListSize: (CGSize) -> Void
-    /// Sessions waiting in the inbox, so a waiting reply is visible before anything opens.
-    let waitingCount: Int
+    /// Sessions waiting in the inbox, oldest first, so a waiting reply is visible and leads
+    /// before anything opens.
+    let waitingKeys: [String]
     let hoverChanged: (Bool) -> Void
     /// Pointer clicks reach the island through the window; these are the same two actions
     /// for VoiceOver, which cannot click a borderless panel's background.
@@ -23,8 +25,15 @@ struct DockedIsland<ListBody: View>: View {
 
     @Environment(\.colorSchemeContrast) private var contrast
 
+    private var waitingCount: Int { waitingKeys.count }
+
+    /// Showing the session list or the inbox: an open surface rather than a button.
+    private var isGrown: Bool {
+        dock.presentation == .list || dock.presentation == .inbox
+    }
+
     private var headline: PresentedSession? {
-        IslandHeadline.pick(from: sessions)
+        IslandHeadline.pick(from: sessions, waitingKeys: waitingKeys)
     }
 
     private var notch: CGRect? {
@@ -63,16 +72,16 @@ struct DockedIsland<ListBody: View>: View {
         }
         .contentShape(shape)
         .onHover(perform: hoverChanged)
-        .accessibilityElement(children: dock.isUnfolded ? .contain : .ignore)
+        .accessibilityElement(children: isGrown ? .contain : .ignore)
         .accessibilityLabel("CodeWindow, docked at the top of the screen")
         .accessibilityValue(Text(accessibilityValue))
-        .accessibilityAddTraits(dock.isUnfolded ? [] : .isButton)
-        .accessibilityHint(dock.isUnfolded ? "Escape closes the session list" : "Opens the session list")
+        .accessibilityAddTraits(isGrown ? [] : .isButton)
+        .accessibilityHint(isGrown ? "Escape closes it" : "Opens the session list")
         .accessibilityAction {
-            if !dock.isUnfolded { open() }
+            if !isGrown { open() }
         }
         .accessibilityAction(.escape) {
-            if dock.isUnfolded { close() }
+            if isGrown { close() }
         }
     }
 
@@ -136,6 +145,9 @@ struct DockedIsland<ListBody: View>: View {
         case .list:
             listBody
                 .transition(.islandContent)
+        case .inbox:
+            inboxBody
+                .transition(.islandContent)
         }
     }
 
@@ -189,8 +201,12 @@ struct DockedIsland<ListBody: View>: View {
 }
 
 enum IslandHeadline {
-    /// A session waiting on the user outranks whatever moved most recently.
-    static func pick(from sessions: [PresentedSession]) -> PresentedSession? {
+    /// A session waiting on the user outranks whatever moved most recently: first the one that
+    /// has waited longest in the inbox, then any that needs attention.
+    static func pick(from sessions: [PresentedSession], waitingKeys: [String] = []) -> PresentedSession? {
+        for key in waitingKeys {
+            if let waiting = sessions.first(where: { $0.id == key }) { return waiting }
+        }
         let attention = sessions.filter(\.needsAttention)
         return (attention.isEmpty ? sessions : attention).max { $0.updatedAt < $1.updatedAt }
     }
@@ -404,7 +420,11 @@ struct IslandShape: InsettableShape {
     }
 
     init(presentation: IslandPresentation, attachedToNotch: Bool, bandHeight: CGFloat) {
-        let grownRadius: CGFloat = presentation == .list ? 24 : 22
+        let grownRadius: CGFloat = switch presentation {
+        case .inbox: 30
+        case .list: 24
+        default: 22
+        }
         let isResting = presentation == .minimal || presentation == .compact
         if attachedToNotch {
             self.init(

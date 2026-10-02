@@ -180,6 +180,20 @@ func testTopDockPlacement() throws {
     )
     try require(tallList.minY >= visible.minY + 18, "A long list escaped below the screen")
 
+    let inbox = frame(.inbox, notch: notch, screen: screen, visible: visible)
+    try require(
+        inbox.maxY == compact.maxY && inbox.midX == compact.midX
+            && inbox.width == TopDockPlacementPolicy.inboxSize.width
+            && inbox.height == notch.height + TopDockPlacementPolicy.inboxSize.height,
+        "The inbox did not grow out of the island on its top edge and center line"
+    )
+    let smallScreen = CGRect(x: 0, y: 0, width: 500, height: 300)
+    let squeezed = frame(.inbox, notch: nil, screen: smallScreen, visible: smallScreen)
+    try require(
+        squeezed.width <= smallScreen.width && squeezed.minY >= smallScreen.minY + 18,
+        "The inbox escaped a small screen"
+    )
+
     let stage = TopDockPlacementPolicy.stage(from: compact, to: list, overshoot: 14)
     try require(
         stage.maxY == list.maxY && stage.midX == list.midX
@@ -287,6 +301,12 @@ func testIslandPresentation() throws {
         Policy.presentation(hasSessions: true, isUnfolded: true, isHovered: true, isAlerting: true)
             == .list,
         "An unfolded island collapsed back into a peek"
+    )
+    try require(
+        Policy.presentation(
+            hasSessions: true, isUnfolded: true, isHovered: true, isAlerting: true, isInboxOpen: true
+        ) == .inbox,
+        "Opening the inbox did not take over the island"
     )
 
     try require(

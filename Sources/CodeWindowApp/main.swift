@@ -129,10 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 inbox: inbox
             )
             self.panel = panel
-            inboxCancellable = inbox.$openItemID
+            inboxCancellable = inbox.$isOpen
                 .removeDuplicates()
                 .dropFirst()
-                .sink { [weak self] id in self?.inboxCardDidChange(id) }
+                .sink { [weak self] isOpen in self?.inboxDidChange(isOpen: isOpen) }
             // A session landing in the inbox brings the panel back over the terminal at once.
             inboxVisibilityCancellable = inbox.objectWillChange
                 .receive(on: DispatchQueue.main)
@@ -349,8 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `--ui-preview` opens the panel over fixed sessions in an isolated state directory and
     /// preferences domain, so the design can be checked on screen without touching real hooks,
     /// sessions, or the user's saved panel position. `CODEWINDOW_PREVIEW` picks the starting
-    /// presentation: floating, minimal, compact (default), expanded, list, inspector, inbox, or
-    /// inbox-floating; `inbox-cycle` answers each card in turn, and `cycle`
+    /// presentation: floating, minimal, compact (default), expanded, list, inspector, inbox,
+    /// inbox-floating, or inbox-list; `inbox-cycle` answers each session in turn, and `cycle`
     /// steps through the docked presentations on its own so their transitions can be recorded.
     private static var previewMode: String {
         ProcessInfo.processInfo.environment["CODEWINDOW_PREVIEW"] ?? "compact"
@@ -476,26 +476,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "cycle":
             cyclePreview(step: 0)
         case "inbox", "inbox-floating":
-            inbox?.openOldest()
+            inbox?.open()
+        case "inbox-list":
+            dock?.unfold()
         case "inbox-cycle":
-            inbox?.openOldest()
-            answerPreviewCards()
+            inbox?.open()
+            answerPreviewSessions()
         default:
             break
         }
     }
 
-    /// Answers whatever card is open every couple of seconds, for recording the inbox flow
-    /// from the first card to inbox zero.
-    private func answerPreviewCards() {
+    /// Answers whatever session is selected every couple of seconds, for recording the inbox
+    /// flow from the first session to inbox zero.
+    private func answerPreviewSessions() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-            guard let self, let inbox = self.inbox, let item = inbox.openItem else { return }
+            guard let self, let inbox = self.inbox, let item = inbox.selectedItem else { return }
             if item.request.isPermission {
                 inbox.allow(item)
             } else {
                 inbox.reply("Sounds good, go ahead.", to: item)
             }
-            self.answerPreviewCards()
+            self.answerPreviewSessions()
         }
     }
 
@@ -574,7 +576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && cursorAfter == cursorBefore
     }
 
-    /// A waiting session opens into a card that takes typing without activating the app, an
+    /// A waiting session opens the inbox, which takes typing without activating the app, an
     /// answer reaches the waiting hook, and the inbox moves on and lets go of the keyboard.
     private func smokeTestInbox(inbox: InboxStore, panel: FloatingPanel, directory: URL?) -> Bool {
         guard let directory,
@@ -598,23 +600,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inbox.refresh()
         let listed = inbox.waiting.map(\.id) == [item.id]
 
-        inbox.openOldest()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-        let opened = inbox.openItemID == item.id && panel.allowsKeyFocus && panel.isKeyWindow
+        inbox.open()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let opened = inbox.isOpen && inbox.selectedItemID == item.id
+            && panel.allowsKeyFocus && panel.isKeyWindow
+            && panel.frame.width == TopDockPlacementPolicy.inboxSize.width
 
         inbox.reply("Yes, ship it.", to: item)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         let delivered = InboxFiles.takeResponse(for: item.id, in: root) == .reply("Yes, ship it.")
-        let released = inbox.openItemID == nil && !panel.allowsKeyFocus && !panel.isKeyWindow
-            && inbox.waiting.isEmpty
+        let cleared = inbox.isClear && inbox.waiting.isEmpty
+        // Inbox zero shows for a moment, then the inbox folds itself and lets go of the keyboard.
+        RunLoop.current.run(until: Date().addingTimeInterval(2.4))
+        let released = !inbox.isOpen && !panel.allowsKeyFocus && !panel.isKeyWindow
+            && panel.frame.width == PanelMetrics.width
 
         InboxFiles.remove(itemID: item.id, in: root)
         inbox.setEnabled(false)
-        let works = listed && opened && delivered && released
+        let works = listed && opened && delivered && cleared && released
         if !works {
             fputs(
                 "inbox smoke failed: listed=\(listed) opened=\(opened) delivered=\(delivered) "
-                    + "released=\(released)\n",
+                    + "cleared=\(cleared) released=\(released) frame=\(panel.frame)\n",
                 stderr
             )
         }
@@ -798,11 +805,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.inspector = inspector
         let dock = TopDockController(panel: panel, defaults: dockDefaults)
         self.dock = dock
-        // An open inspector or inbox card, or the moment of reaching inbox zero, holds an
+        // An open inspector or inbox, or the moment of reaching inbox zero, holds an
         // unfolded island open even with the pointer elsewhere.
         dock.isInspectorActive = { [weak inspector, weak inbox] in
-            (inspector?.isPresenting ?? false) || inbox?.openItemID != nil || inbox?.isClear == true
+            (inspector?.isPresenting ?? false) || inbox?.isOpen == true || inbox?.isClear == true
         }
+        dock.hasWaiting = { [weak inbox] in
+            guard let inbox, inbox.isEnabled else { return false }
+            return !inbox.waiting.isEmpty
+        }
+        dock.isInboxHeld = { [weak inbox] in inbox?.holdsOpen ?? false }
+        dock.requestInboxOpen = { [weak inbox] in inbox?.open() }
+        dock.requestInboxClose = { [weak inbox] in inbox?.close() }
         dock.didChangeDockState = { [weak self] in self?.dockStateDidChange() }
 
         let content = PanelContentView(
@@ -864,8 +878,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             revealPanel: { [weak dock] in
                 dock?.unfold()
             },
-            foldPanel: { [weak dock] in
-                dock?.fold()
+            foldPanel: { [weak dock, weak inbox] in
+                // Escape closes whatever is grown furthest: the inbox, then the list.
+                if inbox?.isOpen == true { inbox?.close() } else { dock?.fold() }
             },
             islandHoverChanged: { [weak dock] isHovered in
                 dock?.islandHoverChanged(isHovered)
@@ -970,7 +985,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var inboxNeedsUser: Bool {
         guard let inbox, inbox.isEnabled else { return false }
-        return !inbox.waiting.isEmpty || inbox.openItemID != nil
+        return !inbox.waiting.isEmpty || inbox.isOpen
     }
 
     private func frontmostApplicationOwnsSession(_ sessions: [PresentedSession]) -> Bool {
@@ -985,37 +1000,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// ⌃⌥I: bring the panel up wherever the user is and open the session that has waited
-    /// longest. Pressing it is a clear request for the inbox, so it also turns the mode on.
+    /// ⌃⌥I: bring the inbox up wherever the user is, on the session that has waited longest,
+    /// or close it again. Pressing it is a clear request for the inbox, so it also turns the
+    /// mode on; with nobody waiting it opens on inbox zero.
     private func answerNextWaiting() {
         guard let inbox else { return }
-        if inbox.openItemID != nil {
+        if inbox.isOpen {
             inbox.close()
             return
         }
         if !inbox.isEnabled { inbox.setEnabled(true) }
         isManuallyHidden = false
-        if !inbox.openOldest() {
-            // Nothing waiting: show the list so the user sees why.
-            panel?.orderFrontRegardless()
-            dock?.unfold()
-        }
+        inbox.open()
     }
 
-    /// An open card is where the user is typing: the panel takes key focus, stays on screen even
-    /// over the terminal that owns the session, and a docked island stays unfolded around it.
-    private func inboxCardDidChange(_ itemID: String?) {
+    /// The open inbox is where the user types: the panel takes key focus without activating the
+    /// app, stays on screen even over the terminal, and the island grows around it.
+    private func inboxDidChange(isOpen: Bool) {
         guard let panel else { return }
-        let isOpen = itemID != nil
         panel.allowsKeyFocus = isOpen
         if isOpen {
             inspector?.dismissImmediately()
-            dock?.unfold()
             if !panel.isVisible { panel.orderFrontRegardless() }
+        }
+        dock?.inboxDidChange(isOpen: isOpen)
+        if isOpen {
             panel.makeKey()
-        } else {
-            if panel.isKeyWindow { panel.resignKey() }
-            dock?.foldIfPointerIsAway()
+        } else if panel.isKeyWindow {
+            panel.resignKey()
         }
         updatePanelVisibility()
     }

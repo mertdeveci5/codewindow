@@ -28,6 +28,7 @@ struct InspectorContentView: View {
             reduceTransparency: reduceTransparency,
             increasedContrast: contrast == .increased
         )
+        .clipShape(shape)
         .scaleEffect(model.isShown ? 1 : 0.94, anchor: model.anchor)
         .opacity(model.isShown ? 1 : 0)
         .blur(radius: model.isShown || reduceMotion ? 0 : 4)
