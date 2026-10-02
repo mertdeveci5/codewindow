@@ -50,14 +50,10 @@ struct HookSetupRow: View {
             Button(action: install) {
                 Text(isInstalling ? "Connecting…" : "Connect")
                     .font(.system(size: PanelMetrics.metaSize, weight: .medium))
-                    .foregroundStyle(PanelPalette.title)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.white.opacity(0.10)))
-                    .contentShape(Capsule())
             }
-                .buttonStyle(.plain)
-                .disabled(isInstalling)
+            .cwGlassButton(prominent: true)
+            .controlSize(.small)
+            .disabled(isInstalling)
 
             Button(action: dismiss) {
                 Image(systemName: "xmark")
@@ -127,13 +123,12 @@ struct CloudViewStatusRow: View {
             Spacer(minLength: 4)
 
             if status.isError {
-                Button("Retry", action: retry)
-                    .font(.system(size: PanelMetrics.metaSize, weight: .regular))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(PanelPalette.title)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                Button(action: retry) {
+                    Text("Retry")
+                        .font(.system(size: PanelMetrics.metaSize, weight: .medium))
+                }
+                .cwGlassButton()
+                .controlSize(.small)
             }
         }
         .panelStatusRow()

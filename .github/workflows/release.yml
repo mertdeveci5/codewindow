@@ -18,6 +18,17 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Select Xcode 26
+        # Liquid Glass needs the macOS 26 SDK. Older toolchains still compile the app, but
+        # silently without glass, so a release must never fall back to one.
+        run: |
+          xcode=$(/bin/ls -d /Applications/Xcode_26*.app 2>/dev/null | /usr/bin/sort -V | /usr/bin/tail -n 1)
+          if [[ -z "$xcode" ]]; then
+            echo "Xcode 26 is not installed on this runner" >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode"
+          xcrun swift --version
       - name: Verify release version
         run: |
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)

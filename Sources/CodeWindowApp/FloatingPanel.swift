@@ -21,6 +21,8 @@ extension NSPanel {
 protocol TopDockPanelObserver: AnyObject {
     func panelDragDidBegin()
     func panelDragDidEnd(moved: Bool)
+    /// The panel was hidden mid-gesture; nothing should dock or stay highlighted.
+    func panelDragDidCancel()
 }
 
 /// A borderless, non-activating panel that floats above every Space and over
@@ -48,17 +50,45 @@ final class FloatingPanel: NSPanel {
     /// notch — so the usual on-screen clamping has to stand down until it detaches.
     var isTopDocked = false
 
+    /// The docked island's resting size. While it springs between sizes the window briefly
+    /// holds a larger transparent stage, and a click there must not count as one on the island.
+    var dockedIslandSize: CGSize?
+
+    private let canvasContainer = CanvasContainerView()
+
+    /// Docked, SwiftUI draws into a fixed canvas pinned to the window's top center, and the
+    /// window grows and shrinks around it. The container repositions that canvas in the same
+    /// pass as the resize, so the island stays exactly where it is. Letting the hosting view
+    /// resize with the window instead shows one frame of old content pinned to the new
+    /// top-left corner before SwiftUI catches up. Nil while floating, where content fills
+    /// the window.
+    var dockedCanvasSize: CGSize? {
+        get { canvasContainer.canvasSize }
+        set { canvasContainer.canvasSize = newValue }
+    }
+
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    func installContent(_ view: NSView) {
+        canvasContainer.frame = NSRect(origin: .zero, size: frame.size)
+        contentView = canvasContainer
+        canvasContainer.hostedView = view
+    }
 
     override func sendEvent(_ event: NSEvent) {
         // Background dragging runs its own event loop inside AppKit, so this call only
         // returns once the mouse is up. That return is the end of the gesture.
+        if event.type == .leftMouseDown, !isOnDockedIsland(event.locationInWindow) {
+            return
+        }
         if event.type == .leftMouseDown, dockObserver != nil {
             dockObserver?.panelDragDidBegin()
-            let startFrame = frame
+            let startAnchor = anchor
             super.sendEvent(event)
-            dockObserver?.panelDragDidEnd(moved: frame != startFrame)
+            // The docked island resizes itself around a fixed top-center anchor, sometimes
+            // mid-click. Only a change of that anchor is the user moving the panel.
+            dockObserver?.panelDragDidEnd(moved: anchor != startAnchor)
             return
         }
 
@@ -131,6 +161,22 @@ final class FloatingPanel: NSPanel {
         }
     }
 
+    /// Top center: the point the island grows around and the floating panel hangs from.
+    private var anchor: NSPoint {
+        NSPoint(x: frame.midX, y: frame.maxY)
+    }
+
+    private func isOnDockedIsland(_ point: NSPoint) -> Bool {
+        guard isTopDocked, let size = dockedIslandSize else { return true }
+        let island = NSRect(
+            x: (frame.width - size.width) / 2,
+            y: frame.height - size.height,
+            width: size.width,
+            height: size.height
+        )
+        return island.contains(point)
+    }
+
     /// A vertical gesture over an overflowing list belongs to that list. Horizontal gestures,
     /// and anything above the list, keep dragging the panel around the screen.
     func scrollsList(at locationInWindow: NSPoint, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
@@ -191,6 +237,7 @@ final class FloatingPanel: NSPanel {
     override func orderOut(_ sender: Any?) {
         trackpadEndWorkItem?.cancel()
         trackpadEndWorkItem = nil
+        if isTrackpadDragActive { dockObserver?.panelDragDidCancel() }
         isTrackpadDragActive = false
         releaseCursor()
         super.orderOut(sender)
@@ -255,6 +302,47 @@ final class FloatingPanel: NSPanel {
         return NSPoint(
             x: min(max(origin.x, minimumX), maximumX),
             y: min(max(origin.y, minimumY), maximumY)
+        )
+    }
+}
+
+/// Holds the SwiftUI hosting view: filling the window while floating, or as a fixed canvas
+/// centered on the window's top edge while docked. Placement happens in `resizeSubviews`, which
+/// AppKit runs synchronously inside the window's own resize.
+final class CanvasContainerView: NSView {
+    var hostedView: NSView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            if let hostedView { addSubview(hostedView) }
+            placeHostedView()
+        }
+    }
+
+    var canvasSize: CGSize? {
+        didSet {
+            guard canvasSize != oldValue else { return }
+            placeHostedView()
+        }
+    }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        placeHostedView()
+    }
+
+    private func placeHostedView() {
+        guard let hostedView else { return }
+        guard let canvasSize else {
+            hostedView.frame = bounds
+            return
+        }
+        // Not rounded: the island is centered inside the canvas as well, so when the window's
+        // width and the canvas's differ in parity the two half-point offsets cancel, and the
+        // island itself lands on whole points.
+        hostedView.frame = NSRect(
+            x: (bounds.width - canvasSize.width) / 2,
+            y: bounds.height - canvasSize.height,
+            width: canvasSize.width,
+            height: canvasSize.height
         )
     }
 }

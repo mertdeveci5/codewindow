@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cloudStateCancellable: AnyCancellable?
     private var cloudView: CloudViewController?
     private var isManuallyHidden = false
+    /// The design preview's fixtures belong to this process, so a preview launched from a
+    /// terminal would otherwise hide itself whenever that terminal is in front.
+    private var isPreview = false
+    /// Nil until the first snapshot, which is history rather than news.
+    private var announcedAttentionIDs: Set<String>?
     private var updaterController: SPUStandardUpdaterController?
     private lazy var updateReminder = UpdateReminder(isPanelManuallyHidden: { [weak self] in
         self?.isManuallyHidden ?? true
@@ -31,8 +36,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let isSmokeTest = CommandLine.arguments.contains("--smoke-test")
+            let isPreview = !isSmokeTest && CommandLine.arguments.contains("--ui-preview")
+            self.isPreview = isPreview
             let smokeDirectory: URL?
-            if isSmokeTest {
+            if isPreview {
+                smokeDirectory = try Self.writePreviewFixtures()
+            } else if isSmokeTest {
                 let url = FileManager.default.temporaryDirectory
                     .appendingPathComponent("CodeWindow-smoke-\(UUID().uuidString)", isDirectory: true)
                 smokeDirectory = try StateFiles.directory(environment: ["CODEWINDOW_STATE_DIR": url.path])
@@ -45,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
 
-            if let smokeDirectory,
+            if isSmokeTest, let smokeDirectory,
                let process = ProcessInspector.stamp(pid: getpid())
             {
                 for index in 0...8 {
@@ -68,7 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            let store = try SessionStore(directory: smokeDirectory)
+            let store = try SessionStore(
+                directory: smokeDirectory,
+                discoversTerminalAgents: !isPreview
+            )
             self.store = store
             if isSmokeTest {
                 updateReminder.availableVersion = "99.0"
@@ -80,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ? "codewindow.smoke-\(UUID().uuidString)"
                 : nil
             let dockDefaults = smokeDefaultsSuite.flatMap(UserDefaults.init(suiteName:))
-                ?? .standard
+                ?? (isPreview ? Self.previewDefaults() : .standard)
             if isSmokeTest {
                 let savedCloudView = CloudMirrorHandle(
                     computerID: "smoke-saved-computer",
@@ -267,9 +279,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             sessionsCancellable = store.$sessions.sink { [weak self] sessions in
+                self?.announceNewAttention(in: sessions)
+                self?.dock?.sessionsChanged(sessions)
                 self?.inspector?.reconcile(with: sessions)
                 self?.updatePanelVisibility()
             }
+            if isPreview { startPreview() }
             cloudStateCancellable = store.$sessions
                 .combineLatest(store.$feeds)
                 .sink { [weak cloudView] sessions, feeds in
@@ -297,6 +312,109 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             fputs("CodeWindow: \(error)\n", stderr)
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    // MARK: - Design preview
+
+    /// `--ui-preview` opens the panel over fixed sessions in an isolated state directory and
+    /// preferences domain, so the design can be checked on screen without touching real hooks,
+    /// sessions, or the user's saved panel position. `CODEWINDOW_PREVIEW` picks the starting
+    /// presentation: floating, minimal, compact (default), expanded, list, or inspector; `cycle`
+    /// steps through the docked presentations on its own so their transitions can be recorded.
+    private static var previewMode: String {
+        ProcessInfo.processInfo.environment["CODEWINDOW_PREVIEW"] ?? "compact"
+    }
+
+    private static func writePreviewFixtures() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CodeWindow-preview", isDirectory: true)
+        try? FileManager.default.removeItem(at: url)
+        let directory = try StateFiles.directory(environment: ["CODEWINDOW_STATE_DIR": url.path])
+        guard previewMode != "minimal", let process = ProcessInspector.stamp(pid: getpid()) else {
+            return directory
+        }
+        let now = Date()
+        let fixtures = [
+            SessionState(
+                sessionKey: "preview-claude",
+                agent: .claude,
+                activity: .working,
+                projectLabel: "codewindow",
+                action: .runningCommand,
+                taskPreview: "make the island feel native",
+                actionPreview: "swift build --product CodeWindow",
+                feedEvents: [
+                    SessionFeedEvent(kind: .user, text: "make the island feel native"),
+                    SessionFeedEvent(kind: .assistant, text: "Reading the dock controller first."),
+                    SessionFeedEvent(kind: .toolCall, text: "swift build --product CodeWindow"),
+                ],
+                process: process,
+                updatedAt: now
+            ),
+            SessionState(
+                sessionKey: "preview-codex",
+                agent: .codex,
+                activity: .needsAttention,
+                projectLabel: "website",
+                action: .awaitingPermission,
+                actionPreview: "npm run deploy",
+                process: process,
+                updatedAt: now.addingTimeInterval(-40)
+            ),
+            SessionState(
+                sessionKey: "preview-pi",
+                agent: .pi,
+                activity: .idle,
+                projectLabel: "notes",
+                action: .waiting,
+                taskPreview: "summarize the changelog",
+                process: process,
+                updatedAt: now.addingTimeInterval(-300)
+            ),
+        ]
+        for fixture in fixtures {
+            try StateFiles.write(fixture, to: directory)
+        }
+        return directory
+    }
+
+    private static func previewDefaults() -> UserDefaults {
+        let name = "codewindow.ui-preview"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        defaults.set(previewMode != "floating", forKey: "topDockEnabled")
+        return defaults
+    }
+
+    private func startPreview() {
+        switch Self.previewMode {
+        case "expanded":
+            dock?.islandHoverChanged(true)
+        case "list":
+            dock?.unfold()
+        case "inspector":
+            dock?.unfold()
+            if let session = store?.sessions.first {
+                inspector?.rowHoverChanged(session, isHovered: true)
+            }
+        case "cycle":
+            cyclePreview(step: 0)
+        default:
+            break
+        }
+    }
+
+    /// Steps through every presentation on its own, for recording the transitions.
+    private func cyclePreview(step: Int) {
+        switch step % 4 {
+        case 0: dock?.islandHoverChanged(true)
+        case 1: dock?.unfold()
+        case 2: dock?.fold()
+        default: dock?.islandHoverChanged(false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            self?.cyclePreview(step: step + 1)
         }
     }
 
@@ -365,6 +483,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func smokeTestTopDockInteraction(of panel: FloatingPanel) -> Bool {
         guard let dock, let screen = panel.screen ?? NSScreen.main else { return false }
         inspector?.dismissImmediately()
+        // The live sink is attached after the smoke test, so hand the dock its sessions here.
+        dock.sessionsChanged(store?.sessions ?? [])
+        let settle = IslandMotion.settleDelay + 0.12
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         let originalTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
         let notch = TopDockPlacementPolicy.notch(
@@ -373,55 +495,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             leftArea: screen.auxiliaryTopLeftArea,
             rightArea: screen.auxiliaryTopRightArea
         )
-        let dockTarget = TopDockPlacementPolicy.dockedFrame(
-            contentSize: CGSize(
-                width: TopDockPlacementPolicy.minimumCapsuleWidth,
-                height: TopDockPlacementPolicy.capsuleHeight
+        let compact = TopDockPlacementPolicy.islandFrame(
+            size: TopDockPlacementPolicy.islandSize(
+                for: .compact,
+                notch: notch,
+                expandedContentWidth: 0,
+                listSize: .zero
             ),
             notch: notch,
             screenFrame: screen.frame,
-            visibleFrame: screen.visibleFrame
+            visibleFrame: screen.visibleFrame,
+            margin: PanelMetrics.screenMargin
         )
+        func isAnchored(_ frame: NSRect) -> Bool {
+            abs(frame.maxY - compact.maxY) < 1 && abs(frame.midX - compact.midX) < 1
+        }
+        func isCompact(_ frame: NSRect) -> Bool {
+            isAnchored(frame)
+                && abs(frame.width - compact.width) < 1
+                && abs(frame.height - compact.height) < 1
+        }
+
         dock.panelDragDidBegin()
         panel.setFrameOrigin(NSPoint(
-            x: dockTarget.midX - panel.frame.width / 2,
-            y: dockTarget.maxY - panel.frame.height
+            x: compact.midX - panel.frame.width / 2,
+            y: compact.maxY - panel.frame.height
         ))
         dock.panelDragDidEnd(moved: true)
         RunLoop.current.run(until: Date().addingTimeInterval(0.20))
-        let foldedTop = panel.frame.maxY
-        let topAttachedWorks = abs(foldedTop - dockTarget.maxY) < 1
+        let topAttachedWorks = isAnchored(panel.frame)
         print(
             "topDockScreen=\(notch == nil ? "notchless" : "notched") "
                 + "topAttached=\(topAttachedWorks)"
         )
-        // A docked island reaches up into the camera housing, so the folded height is the
-        // activity bar plus that overlap.
-        let housingOverlap = notch == nil ? 0 : TopDockPlacementPolicy.notchOverlap
+        // Under a housing the resting island is exactly as tall as the camera band.
         let foldedWorks = dock.model.isDocked
-            && !dock.model.isUnfolded
+            && dock.model.presentation == .compact
             && panel.isTopDocked
             && panel.level == .statusBar
             && !panel.hasShadow
-            && abs(panel.frame.midX - dockTarget.midX) < 1
-            && topAttachedWorks
-            && abs(
-                panel.frame.height
-                    - (TopDockPlacementPolicy.capsuleHeight + housingOverlap)
-            ) < 1
+            && isCompact(panel.frame)
 
+        // Docking re-evaluates auto-hide, and a smoke run launched from a terminal owns its
+        // own fixture sessions. Keep the panel on screen so the springs really run.
+        panel.orderFrontRegardless()
+        dock.islandHoverChanged(true)
+        RunLoop.current.run(
+            until: Date().addingTimeInterval(TopDockController.peekDelay + settle)
+        )
+        let peekWorks = dock.model.presentation == .expanded
+            && isAnchored(panel.frame)
+            && abs(
+                panel.frame.height - (compact.height + TopDockPlacementPolicy.expandedBodyHeight)
+            ) < 1
+        dock.islandHoverChanged(false)
+        RunLoop.current.run(
+            until: Date().addingTimeInterval(TopDockController.peekReleaseDelay + settle)
+        )
+        let unpeekWorks = dock.model.presentation == .compact && isCompact(panel.frame)
+
+        panel.orderFrontRegardless()
         dock.unfold()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.20))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        // Mid-spring the window holds a stage covering both sizes, anchored like the island.
+        let stagedWorks = reduceMotion
+            || (isAnchored(panel.frame) && panel.frame.height > compact.height && !panel.hasShadow)
+        RunLoop.current.run(until: Date().addingTimeInterval(settle))
         let unfoldedWorks = dock.model.isUnfolded
             && panel.hasShadow
             && panel.frame.width == PanelMetrics.width
-            && panel.frame.height > TopDockPlacementPolicy.capsuleHeight
-            && abs(panel.frame.maxY - foldedTop) < 1
+            && panel.frame.height > compact.height
+            && isAnchored(panel.frame)
 
         dock.fold()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
-        let refoldedWorks = !dock.model.isUnfolded
-            && abs(panel.frame.maxY - foldedTop) < 1
+        RunLoop.current.run(until: Date().addingTimeInterval(settle))
+        let refoldedWorks = !dock.model.isUnfolded && isCompact(panel.frame) && !panel.hasShadow
 
         let dockedFrame = panel.frame
         dock.panelDragDidBegin()
@@ -430,17 +578,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             y: panel.frame.minY
         ))
         dock.panelDragDidEnd(moved: true)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         let resistedPullWorks = dock.model.isDocked
             && panel.isTopDocked
             && abs(panel.frame.minX - dockedFrame.minX) < 1
             && abs(panel.frame.minY - dockedFrame.minY) < 1
 
         dock.detach()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         let restoredWorks = !dock.model.isDocked
             && !panel.isTopDocked
             && panel.level == .floating
+            && panel.hasShadow
             && panel.frame.width == PanelMetrics.width
             && abs(panel.frame.minX - originalTopLeft.x) < 1
             && abs(panel.frame.maxY - originalTopLeft.y) < 1
@@ -459,6 +608,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dock.panelDragDidEnd(moved: true)
 
         let works = foldedWorks
+            && peekWorks
+            && unpeekWorks
+            && stagedWorks
             && unfoldedWorks
             && refoldedWorks
             && resistedPullWorks
@@ -466,10 +618,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && pullToDetachWorks
         if !works {
             fputs(
-                "top dock smoke failed: folded=\(foldedWorks) unfolded=\(unfoldedWorks) "
+                "top dock smoke failed: folded=\(foldedWorks) peek=\(peekWorks) "
+                    + "unpeek=\(unpeekWorks) staged=\(stagedWorks) unfolded=\(unfoldedWorks) "
                     + "refolded=\(refoldedWorks) resistedPull=\(resistedPullWorks) "
                     + "restored=\(restoredWorks) pullToDetach=\(pullToDetachWorks) "
-                    + "topAttached=\(topAttachedWorks)\n",
+                    + "topAttached=\(topAttachedWorks) frame=\(panel.frame) compact=\(compact)\n",
                 stderr
             )
         }
@@ -514,8 +667,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reportFullContentSize: { [weak dock] size in
                 dock?.fullContentSizeChanged(to: size)
             },
-            reportCapsuleContentSize: { [weak dock] size in
-                dock?.capsuleContentSizeChanged(to: size)
+            reportExpandedContentWidth: { [weak dock] width in
+                dock?.expandedContentWidthChanged(to: width)
             },
             reportScrollableListHeight: { [weak panel] height in
                 panel?.scrollableListHeight = height
@@ -533,8 +686,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return await self.uninstallHooks()
             },
             checkHooks: { [weak self] in
-                // The UI smoke test must not install or grant trust in the real user's profiles.
-                if CommandLine.arguments.contains("--smoke-test") { return true }
+                // The UI smoke test and the design preview must not install or grant trust in
+                // the real user's profiles.
+                if CommandLine.arguments.contains("--smoke-test")
+                    || CommandLine.arguments.contains("--ui-preview")
+                {
+                    return true
+                }
                 guard let self else { return false }
                 // Repair before reporting: a build that adds a hook event would otherwise show
                 // the setup prompt for the moment between the check and the refresh.
@@ -559,12 +717,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             revealPanel: { [weak dock] in
                 dock?.unfold()
             },
-            unfoldedHoverChanged: { [weak dock] isHovered in
-                dock?.unfoldedHoverChanged(isHovered)
+            foldPanel: { [weak dock] in
+                dock?.fold()
+            },
+            islandHoverChanged: { [weak dock] isHovered in
+                dock?.islandHoverChanged(isHovered)
             }
         )
-        panel.contentView = NSHostingView(rootView: content)
+        let hostingView = NSHostingView(rootView: content)
+        // The controller sizes the window from measured content; the hosting view must not
+        // impose size constraints of its own on the window or on its container.
+        hostingView.sizingOptions = []
+        panel.installContent(hostingView)
         position(panel: panel)
+        // A panel left docked at quit must open as the island, even before any measurement
+        // or session update arrives to trigger a layout.
+        if dock.isDocked { dock.layout() }
         return panel
     }
 
@@ -577,8 +745,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
     }
 
-    /// Folding hides the rows the inspector hangs off, and a docked panel outranks the
-    /// auto-hide rule, so both have to be re-evaluated.
+    /// Folding hides the rows the inspector hangs off, and any change of dock state moves the
+    /// panel, so both the inspector and the auto-hide rule have to be re-evaluated.
     private func dockStateDidChange() {
         inspector?.dismissImmediately()
         updatePanelVisibility()
@@ -598,6 +766,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updatePanelVisibility()
     }
 
+    /// The island expands for a session that starts waiting on the user; VoiceOver users get
+    /// the same news spoken, whether the panel is docked, floating, or auto-hidden.
+    private func announceNewAttention(in sessions: [PresentedSession]) {
+        let waiting = sessions.filter(\.needsAttention)
+        let ids = Set(waiting.map(\.id))
+        defer { announcedAttentionIDs = ids }
+        guard let previous = announcedAttentionIDs,
+              let session = waiting.first(where: { !previous.contains($0.id) })
+        else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: "\(session.agent.displayName) needs attention in \(session.projectLabel): "
+                    + session.primaryLabel,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ]
+        )
+    }
+
     private func hidePanelManually() {
         isManuallyHidden = true
         inspector?.dismissImmediately()
@@ -608,7 +796,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let panel, let store else { return }
         let shouldHide = Self.shouldHidePanel(
             isManuallyHidden: isManuallyHidden,
-            frontmostApplicationOwnsSession: frontmostApplicationOwnsSession(store.sessions)
+            frontmostApplicationOwnsSession: !isPreview
+                && frontmostApplicationOwnsSession(store.sessions)
         )
         if shouldHide {
             inspector?.dismissImmediately()
