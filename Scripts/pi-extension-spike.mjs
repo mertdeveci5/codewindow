@@ -24,6 +24,7 @@ const expectedEvents = [
   "tool_execution_start",
   "tool_execution_end",
   "message_end",
+  "agent_settled",
   "session_shutdown",
 ];
 assert.deepEqual([...handlers.keys()], expectedEvents);

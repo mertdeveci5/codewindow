@@ -4,14 +4,20 @@ import SwiftUI
 
 struct AgentLogo: View {
     let agent: AgentKind
+    /// The panel is always dark, so its logos are drawn as shipped. Windows that follow the
+    /// system appearance draw the single-color marks in the label color instead, or the white
+    /// ones would vanish in light mode.
+    var adaptsToAppearance = false
 
     var body: some View {
         Group {
             if let logo = AgentLogoAssets.image(for: agent) {
                 Image(nsImage: logo)
+                    .renderingMode(adaptsToAppearance && agent.isMonochromeLogo ? .template : .original)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(.primary)
                     .padding(agent.logoPadding)
             } else {
                 Image(systemName: agent.fallbackSymbolName)
@@ -53,6 +59,8 @@ enum AgentLogoAssets {
 }
 
 private extension AgentKind {
+    var isMonochromeLogo: Bool { self != .claude }
+
     var logoPadding: CGFloat {
         switch self {
         case .codex: 3

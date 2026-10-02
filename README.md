@@ -75,6 +75,30 @@ Pull the island down or sideways to detach it, or right-click it and choose Deta
 
 On macOS 26 the floating panel and the session detail view use Liquid Glass. Earlier versions of macOS use a dark translucent material. Reduce Transparency makes both opaque.
 
+## Inbox
+
+Inbox mode lets you answer agents from CodeWindow instead of switching to each terminal. Right-click the panel and choose **Inbox Mode**, or press **⌃⌥I**. Pressing the shortcut also turns the mode on.
+
+When an agent finishes a turn or asks for permission, its session moves into a **Waiting for you** section at the top of the panel, oldest first. On the docked island, the right side of the camera shows a tray and the number waiting.
+
+Click a waiting session, or press ⌃⌥I, and its row opens into a card. The card shows what you asked, the agent's full message, and a reply field. For a permission request it shows the command, with **Approve**, **Deny**, and **Terminal** buttons:
+
+- **Return** sends your reply. **Option-Return** adds a new line.
+- **⌘Return** approves a permission request, and **⌘N** denies it.
+- **Escape** closes the card and keeps what you typed.
+
+After you answer, the card closes and its session moves back down with the working sessions. The next waiting session then opens. When nothing is left, the section shows **Inbox zero** for a moment and closes.
+
+The panel takes your typing while a card is open, without switching apps. It stays visible even over the terminal that owns the session.
+
+How each agent gets your answer:
+
+- **Claude Code:** the reply wakes the waiting session. Approvals and denials answer its permission prompt. The prompt also stays open in the terminal, and whichever answer comes first wins.
+- **Codex:** the reply is queued through Codex's own local app server and arrives as a normal message. A permission request waits in the inbox for up to an hour. Until you answer, Codex shows "Waiting for your answer in the CodeWindow inbox" in its terminal. Choose **Terminal** to answer it there instead.
+- **Pi:** CodeWindow's Pi extension hands your reply to the session. Pi does not ask for permission.
+
+If you type in the terminal instead, the session moves on and its item leaves the inbox. A reply sent from the inbox afterwards is never delivered. Turning inbox mode off returns every waiting session to its terminal at once.
+
 ## Public Cloud View
 
 Cloud View is an optional, read-only way to follow CodeWindow from another device. Install the
@@ -141,6 +165,14 @@ A state file contains:
 The preview can contain part of a task, command, or selected tool argument. CodeWindow only considers a small list of useful fields such as paths, queries, URLs, and tool targets. It removes full file paths, strips URL credentials and query strings, and tries to hide common credential formats. This redaction is not a security guarantee. Do not use previews on a shared screen if your commands or prompts may contain private text.
 
 CodeWindow does not scan local transcripts. It does not store complete prompts, command output, tool output, transcripts, or assistant reasoning. State files are limited to 8 KB and stored in `~/Library/Application Support/CodeWindow/State` with user-only permissions.
+
+While inbox mode is on, the inbox keeps more so you can answer from it. For each waiting session it stores:
+
+- the agent's whole latest message, up to 16,000 characters;
+- the prompt that started the turn, up to 4,000 characters;
+- for a permission request, the command or path the tool will act on.
+
+The hooks provide these directly; CodeWindow still reads no transcripts. The inbox lives in the same user-only `State` folder. Each item is deleted as soon as it is answered, the session moves on, or the agent exits. Turning inbox mode off deletes all of it. Inbox contents never leave the Mac and are never sent to Cloud View.
 
 The website sends an anonymous `download_clicked` event to PostHog when a download link is used.
 After agent hooks are successfully installed, the installer sends one anonymous

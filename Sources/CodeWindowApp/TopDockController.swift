@@ -113,7 +113,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         guard size.width > 0, size.height > 0, size != fullContentSize else { return }
         fullContentSize = size
         guard !model.isDocked || model.isUnfolded else { return }
-        layoutAfterMeasurement(animated: model.isDocked)
+        layoutAfterMeasurement(animated: true)
     }
 
     func expandedContentWidthChanged(to width: CGFloat) {
@@ -185,7 +185,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     func layout(animated: Bool = false) {
         guard let screen = panel.screen ?? NSScreen.main else { return }
         guard model.isDocked else {
-            apply(floatingFrame(on: screen), animated: animated)
+            morphFloating(to: floatingFrame(on: screen), animated: animated)
             return
         }
         // The user is holding the island; snapping it home now would fight their hand. The
@@ -247,6 +247,11 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         }
 
         let expanding = target.height >= model.islandSize.height
+        // Within one presentation, such as the list growing around an opened card, the island
+        // moves on the same spring as the content inside it, so the two never pull apart.
+        let spring = presentation == model.presentation
+            ? IslandMotion.resize
+            : (expanding ? IslandMotion.expand : IslandMotion.collapse)
         apply(
             TopDockPlacementPolicy.stage(
                 from: current,
@@ -256,7 +261,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
             animated: false
         )
         panel.hasShadow = false
-        withAnimation(expanding ? IslandMotion.expand : IslandMotion.collapse) {
+        withAnimation(spring) {
             model.presentation = presentation
             model.islandSize = target.size
         }
@@ -268,6 +273,51 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         }
         settleWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + IslandMotion.settleDelay, execute: work)
+    }
+
+    /// The floating panel grows from its top-left corner, so its stage keeps that corner and
+    /// holds both heights while SwiftUI springs the glass body inside it.
+    private func morphFloating(to target: NSRect, animated: Bool) {
+        let current = panel.frame
+        let isAnchored = abs(current.minX - target.minX) < 1 && abs(current.maxY - target.maxY) < 1
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard animated, isAnchored, panel.isVisible, !reduceMotion, !isDragging,
+              current.size != target.size
+        else {
+            if !(animated && isAnchored && current.size == target.size) {
+                settleWork?.cancel()
+                settleWork = nil
+                // A move to a new spot, such as a detach, still glides there.
+                apply(target, animated: animated && !isAnchored)
+            }
+            return
+        }
+        settleWork?.cancel()
+        let height = max(current.height, target.height)
+        apply(
+            NSRect(
+                x: target.minX,
+                y: target.maxY - height,
+                width: max(current.width, target.width),
+                height: height
+            ),
+            animated: false
+        )
+        panel.hasShadow = false
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.model.isDocked else { return }
+            self.settleWork = nil
+            self.apply(target, animated: false)
+            self.settleShadow()
+        }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + IslandMotion.settleDelay, execute: work)
+    }
+
+    /// After an inbox card closes from the keyboard, nothing hovers away to fold the island.
+    func foldIfPointerIsAway() {
+        guard isUnfolded, !panel.frame.contains(NSEvent.mouseLocation) else { return }
+        scheduleFold(after: 0.45)
     }
 
     /// Only the unfolded list floats over other windows; the smaller states sit on the bezel.

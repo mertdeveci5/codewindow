@@ -109,7 +109,11 @@ def check(helper, codex):
                 with Codex(codex, profile) as client:
                     hooks = client.hooks()
                 own = [h for h in hooks if "codewindow-report" in h.get("command", "")]
-                assert len(own) == 8, own
+                # Eight reporting hooks plus the two inbox hooks that wait for the user.
+                assert len(own) == 10, own
+                inbox = [h for h in own if h["command"].endswith(" --inbox")]
+                assert sorted(h["eventName"] for h in inbox) == ["permissionRequest", "stop"], inbox
+                assert next(h for h in inbox if h["eventName"] == "permissionRequest")["timeoutSec"] == 3600
                 assert all(h["trustStatus"] == "trusted" for h in own)
                 user = next(h for h in hooks if h["command"] == "/usr/bin/true")
                 assert user["currentHash"] == preserved[profile]["currentHash"]

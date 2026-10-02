@@ -100,7 +100,7 @@ public struct CodexHookTrust {
     private func owns(_ hook: CodexConfiguredHook, home: URL, locations: InstallLocations) -> Bool {
         hook.source == "user"
             && hook.handlerType == "command"
-            && hook.command == "\(HookInstaller.shellQuote(locations.installedReporter.path)) --agent codex"
+            && HookInstaller.ownedCommands(locations, agent: .codex).contains(hook.command ?? "")
             && URL(fileURLWithPath: hook.sourcePath).resolvingSymlinksInPath().standardizedFileURL
                 == home.appendingPathComponent("hooks.json").resolvingSymlinksInPath().standardizedFileURL
     }

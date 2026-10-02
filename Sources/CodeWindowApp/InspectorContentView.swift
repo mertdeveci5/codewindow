@@ -140,7 +140,7 @@ struct InspectorContentView: View {
     }
 }
 
-private struct FeedEventRow: View {
+struct FeedEventRow: View {
     let event: SessionFeedEvent
 
     var body: some View {

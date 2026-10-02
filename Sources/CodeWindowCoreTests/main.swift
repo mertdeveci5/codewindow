@@ -313,6 +313,230 @@ func testIslandPresentation() throws {
     try require(IslandAlert.attention.duration > IslandAlert.finished.duration, "Alert durations")
 }
 
+func testInbox() throws {
+    let state = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: state) }
+    let root = try InboxFiles.directory(stateDirectory: state)
+    let mode = try unwrap(
+        FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber,
+        "Inbox permissions missing"
+    )
+    try require(mode.intValue & 0o777 == 0o700, "Inbox directory is readable by other users")
+    try require(!InboxFiles.isEnabled(in: root), "Inbox mode was on before the user chose it")
+    try InboxFiles.setEnabled(true, in: root)
+    try require(InboxFiles.isEnabled(in: root), "Inbox mode did not turn on")
+
+    let process = ProcessStamp(pid: 1, startedAtSeconds: 1, startedAtMicroseconds: 0)
+    func item(_ session: String, _ request: InboxRequest = .reply, at seconds: TimeInterval = 0) -> InboxItem {
+        InboxItem(
+            sessionKey: session,
+            externalSessionID: "external-\(session)",
+            agent: .claude,
+            projectLabel: "codewindow",
+            request: request,
+            message: "Do you like mangoes?\u{1B}[31m\nYes or no.",
+            task: "pick a fruit",
+            process: process,
+            createdAt: Date(timeIntervalSince1970: 1_000 + seconds)
+        )
+    }
+    let first = item("a", at: 2)
+    let other = item("b", at: 1)
+    try InboxFiles.add(first, in: root)
+    try InboxFiles.add(other, in: root)
+    try require(InboxFiles.all(in: root).map(\.id) == [other.id, first.id], "Inbox is not oldest first")
+    try require(
+        InboxFiles.item(id: first.id, in: root)?.message == "Do you like mangoes?[31m\nYes or no.",
+        "Control characters survived, or line breaks did not"
+    )
+    let fileMode = try unwrap(
+        FileManager.default.attributesOfItem(
+            atPath: root.appendingPathComponent("Items/\(first.id).json").path
+        )[.posixPermissions] as? NSNumber,
+        "Item permissions missing"
+    )
+    try require(fileMode.intValue & 0o777 == 0o600, "Inbox item is readable by other users")
+
+    let replacement = item("a", .permission(tool: "Bash", detail: "echo hi > note.txt"), at: 3)
+    try InboxFiles.add(replacement, in: root)
+    try require(
+        InboxFiles.item(id: first.id, in: root) == nil
+            && InboxFiles.all(in: root).filter { $0.sessionKey == "a" }.map(\.id) == [replacement.id],
+        "A session kept two open questions"
+    )
+    InboxFiles.retire(sessionKey: "a", in: root)
+    try require(InboxFiles.all(in: root).map(\.id) == [other.id], "Retiring a session left its question")
+
+    let long = InboxItem(
+        sessionKey: "c",
+        externalSessionID: "c",
+        agent: .codex,
+        projectLabel: "codewindow",
+        request: .reply,
+        message: String(repeating: "x", count: InboxItem.maximumMessageLength + 50),
+        task: nil,
+        process: process
+    )
+    try require(
+        long.message?.count == InboxItem.maximumMessageLength && long.message?.hasSuffix("…") == true,
+        "A long message was not bounded"
+    )
+    try require(long.replyDelivery == .codexQueue, "Codex replies do not go through its queue")
+
+    try InboxFiles.respond(.reply("Yes, love them."), to: other.id, in: root)
+    try require(
+        InboxFiles.takeResponse(for: other.id, in: root) == .reply("Yes, love them."),
+        "Response did not round trip"
+    )
+    try require(InboxFiles.takeResponse(for: other.id, in: root) == nil, "A response was delivered twice")
+
+    let encoded = try String(
+        decoding: JSONEncoder().encode(InboxResponse.reply("hi")),
+        as: UTF8.self
+    )
+    try require(
+        encoded.contains(#""kind":"reply""#) && encoded.contains(#""text":"hi""#),
+        "Responses are not in the flat shape the Pi extension reads"
+    )
+    for response in [InboxResponse.allow, .deny(reason: "no"), .deny(reason: nil), .answerInTerminal] {
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(InboxResponse.self, from: data)
+        try require(decoded == response, "Response \(response) did not round trip")
+    }
+
+    InboxFiles.rememberTask("  make the island native  ", sessionKey: "a", in: root)
+    try require(InboxFiles.task(sessionKey: "a", in: root) == "make the island native", "Task was not kept")
+    InboxFiles.forgetTask(sessionKey: "a", in: root)
+    try require(InboxFiles.task(sessionKey: "a", in: root) == nil, "Task outlived its session")
+
+    // Waiting: answered, retired, and abandoned by a dead agent.
+    let waiting = item("w")
+    try InboxFiles.add(waiting, in: root)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) {
+        try? InboxFiles.respond(.allow, to: waiting.id, in: root)
+    }
+    try require(
+        InboxWaiter.wait(for: waiting, in: root, pollInterval: 0.02, isAgentAlive: { true }) == .allow,
+        "Waiter missed the answer"
+    )
+    try require(InboxFiles.item(id: waiting.id, in: root) == nil, "Answered item stayed in the inbox")
+    let retired = item("r")
+    try InboxFiles.add(retired, in: root)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+        InboxFiles.retire(sessionKey: "r", in: root)
+    }
+    try require(
+        InboxWaiter.wait(for: retired, in: root, pollInterval: 0.02, isAgentAlive: { true }) == nil,
+        "Waiter delivered an answer after the session moved on"
+    )
+    let orphan = item("o")
+    try InboxFiles.add(orphan, in: root)
+    try require(
+        InboxWaiter.wait(for: orphan, in: root, pollInterval: 0.02, isAgentAlive: { false }) == nil
+            && InboxFiles.item(id: orphan.id, in: root) == nil,
+        "An item outlived its agent"
+    )
+
+    try InboxFiles.add(item("z"), in: root)
+    InboxFiles.rememberTask("task", sessionKey: "z", in: root)
+    try InboxFiles.setEnabled(false, in: root)
+    try require(
+        !InboxFiles.isEnabled(in: root) && InboxFiles.all(in: root).isEmpty
+            && InboxFiles.task(sessionKey: "z", in: root) == nil,
+        "Turning the inbox off kept questions or prompts"
+    )
+}
+
+func testInboxHookOutput() throws {
+    let claudeReply = InboxHookOutput.output(for: .reply("Yes, mangoes."), agent: .claude, request: .reply)
+    try require(
+        claudeReply.exitCode == 2 && claudeReply.standardOutput == nil
+            && claudeReply.standardError?.hasSuffix("Yes, mangoes.") == true
+            && claudeReply.standardError?.contains("CodeWindow inbox") == true,
+        "Claude reply would not wake the session"
+    )
+    try require(
+        InboxHookOutput.output(for: .reply("   "), agent: .claude, request: .reply) == .nothing,
+        "An empty reply woke the session"
+    )
+    try require(
+        InboxHookOutput.output(for: .reply("hi"), agent: .codex, request: .reply) == .nothing,
+        "A Codex hook tried to deliver a queued reply"
+    )
+    let permission = InboxRequest.permission(tool: "Bash", detail: "rm -rf build")
+    func decision(_ output: InboxHookOutput) throws -> [String: Any] {
+        let data = Data((output.standardOutput ?? "").utf8)
+        let root = try unwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any], "Not JSON")
+        let specific = try unwrap(root["hookSpecificOutput"] as? [String: Any], "No hookSpecificOutput")
+        try require(specific["hookEventName"] as? String == "PermissionRequest", "Wrong hook event")
+        return try unwrap(specific["decision"] as? [String: Any], "No decision")
+    }
+    for agent in [AgentKind.claude, .codex] {
+        let allow = InboxHookOutput.output(for: .allow, agent: agent, request: permission)
+        let allowed = try decision(allow)
+        try require(allow.exitCode == 0 && allowed["behavior"] as? String == "allow", "\(agent) allow")
+        let deny = try decision(InboxHookOutput.output(for: .deny(reason: "Use a dry run"), agent: agent, request: permission))
+        try require(
+            deny["behavior"] as? String == "deny" && deny["message"] as? String == "Use a dry run",
+            "\(agent) deny lost its reason"
+        )
+        let bare = try decision(InboxHookOutput.output(for: .deny(reason: nil), agent: agent, request: permission))
+        try require((bare["message"] as? String)?.isEmpty == false, "\(agent) deny without a reason said nothing")
+        try require(
+            InboxHookOutput.output(for: .answerInTerminal, agent: agent, request: permission) == .nothing,
+            "\(agent) did not hand the prompt back to the terminal"
+        )
+    }
+    try require(
+        InboxHookOutput.output(for: nil, agent: .claude, request: permission) == .nothing,
+        "A retired permission produced a decision"
+    )
+    try require(
+        InboxHookOutput.output(for: .reply("yes"), agent: .claude, request: permission) == .nothing,
+        "A reply was mistaken for a permission decision"
+    )
+
+    // Every agent's turn end and permission prompt map onto the same questions.
+    let stop = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "Stop", "cwd": "/tmp/codewindow",
+        "last_assistant_message": "Do you like mangoes?",
+    ])
+    try require(stop.inboxRequest == .reply && stop.fullAssistantMessage == "Do you like mangoes?", "Stop")
+    try require(!stop.settlesInbox, "A turn end retired its own question")
+    let settled = try HookPayload(json: ["session_id": "s", "event": "agent_settled", "cwd": "/tmp"])
+    try require(settled.inboxRequest == .reply, "Pi settling did not file a reply")
+    let request = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "PermissionRequest", "cwd": "/tmp",
+        "tool_name": "Bash", "tool_input": ["command": "echo hi > note.txt"],
+    ])
+    try require(
+        request.inboxRequest == .permission(tool: "Bash", detail: "echo hi > note.txt") && !request.settlesInbox,
+        "Permission request did not carry its command"
+    )
+    let prompt = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "UserPromptSubmit", "cwd": "/tmp", "prompt": "make it native",
+    ])
+    try require(prompt.fullPrompt == "make it native" && prompt.settlesInbox, "Typing did not settle the inbox")
+    let wakeUp = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "UserPromptSubmit", "cwd": "/tmp",
+        "prompt": "<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n"
+            + "<system-reminder>\nStop hook blocking error from command \"Stop\": "
+            + "\(InboxHookOutput.replyPreamble)\n\nYes, mangoes.\n</system-reminder>",
+    ])
+    try require(wakeUp.fullPrompt == "Yes, mangoes.", "An inbox reply was recorded with its wrapper")
+    let notification = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "UserPromptSubmit", "cwd": "/tmp",
+        "prompt": "<task-notification>\n<summary>Background task finished</summary>\n</task-notification>",
+    ])
+    try require(notification.fullPrompt == nil, "A system notification replaced what the user asked")
+    let tool = try HookPayload(json: ["session_id": "s", "hook_event_name": "PostToolUse", "cwd": "/tmp"])
+    try require(tool.settlesInbox && tool.inboxRequest == nil, "A finished tool did not settle the inbox")
+    let subagent = try HookPayload(json: [
+        "session_id": "s", "hook_event_name": "Stop", "cwd": "/tmp", "agent_id": "sub",
+    ])
+    try require(subagent.inboxRequest == nil && !subagent.settlesInbox, "A subagent reached the inbox")
+}
+
 func testSessionFeed() throws {
     let first = SessionFeedEvent(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
@@ -1166,6 +1390,79 @@ func testHookInstaller() throws {
         "Broken legacy Pi extension was not migrated"
     )
     try require(!piExtension.contains("pi.on(\"tool_call\""), "Legacy Pi tool hook remains")
+    try require(piExtension.contains("pi.on(\"agent_settled\""), "Pi inbox turn-end hook missing")
+    try require(piExtension.contains(#"["--inbox"]"#), "Pi does not file inbox items")
+    try require(piExtension.contains("sendUserMessage"), "Pi does not deliver inbox replies")
+    try require(piExtension.contains(#"deliverAs: "followUp""#), "Pi reply could interrupt a running turn")
+
+    func handlers(_ hooks: [String: Any], _ event: String) -> [[String: Any]] {
+        (hooks[event] as? [[String: Any]] ?? []).flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+    }
+    func inboxHandler(_ hooks: [String: Any], _ event: String) -> [String: Any]? {
+        handlers(hooks, event).first { ($0["command"] as? String)?.hasSuffix(" --inbox") == true }
+    }
+    let claudeStopInbox = try unwrap(inboxHandler(claudeHooks, "Stop"), "Claude inbox Stop hook missing")
+    try require(
+        claudeStopInbox["async"] as? Bool == true && claudeStopInbox["asyncRewake"] as? Bool == true,
+        "Claude inbox Stop hook would hold the terminal instead of waiting in the background"
+    )
+    let claudePermissionInbox = try unwrap(
+        inboxHandler(claudeHooks, "PermissionRequest"),
+        "Claude inbox permission hook missing"
+    )
+    try require(
+        claudePermissionInbox["timeout"] as? Int == HookInstaller.inboxPermissionTimeout,
+        "Claude inbox permission hook would time out before the user answers"
+    )
+    let codexPermissionInbox = try unwrap(
+        inboxHandler(codexHooks, "PermissionRequest"),
+        "Codex inbox permission hook missing"
+    )
+    try require(
+        codexPermissionInbox["timeout"] as? Int == HookInstaller.inboxPermissionTimeout
+            && (codexPermissionInbox["statusMessage"] as? String)?.contains("CodeWindow inbox") == true,
+        "Codex inbox permission hook has the wrong timeout or no status"
+    )
+    try require(
+        (inboxHandler(codexHooks, "Stop")?["timeout"] as? Int ?? 0) <= 5,
+        "Codex inbox Stop hook may hold a finished turn"
+    )
+    try require(
+        handlers(claudeHooks, "UserPromptSubmit").allSatisfy { $0["timeout"] as? Int == 2 },
+        "Reporting hooks lost their short timeout"
+    )
+
+    // An older install with a stale inbox timeout is brought up to date in place.
+    var staleClaude = installedClaude
+    var staleHooks = claudeHooks
+    staleHooks["PermissionRequest"] = (claudeHooks["PermissionRequest"] as? [[String: Any]] ?? []).map { group in
+        var group = group
+        group["hooks"] = (group["hooks"] as? [[String: Any]] ?? []).map { handler in
+            guard (handler["command"] as? String)?.hasSuffix(" --inbox") == true else { return handler }
+            var handler = handler
+            handler["timeout"] = 2
+            return handler
+        }
+        return group
+    }
+    staleClaude["hooks"] = staleHooks
+    try writeJSON(staleClaude, to: locations.claudeConfiguration)
+    try require(!HookInstaller.isInstalled(at: locations), "A stale inbox timeout reports itself installed")
+    _ = try HookInstaller.install(at: locations)
+    let repairedHooks = try unwrap(
+        try readJSON(locations.claudeConfiguration)["hooks"] as? [String: Any],
+        "Repaired Claude hooks missing"
+    )
+    try require(
+        inboxHandler(repairedHooks, "PermissionRequest")?["timeout"] as? Int == HookInstaller.inboxPermissionTimeout,
+        "Install did not repair a stale inbox timeout"
+    )
+    try require(
+        handlers(repairedHooks, "PermissionRequest").filter {
+            ($0["command"] as? String)?.hasSuffix(" --inbox") == true
+        }.count == 1,
+        "Repairing an inbox hook duplicated it"
+    )
 
     let second = try HookInstaller.install(at: locations)
     try require(second.changed.isEmpty, "Second install was not idempotent")
@@ -2158,6 +2455,8 @@ let tests: [(String, () throws -> Void)] = [
     ("inspector placement", testInspectorPlacement),
     ("top dock placement", testTopDockPlacement),
     ("island presentation", testIslandPresentation),
+    ("inbox", testInbox),
+    ("inbox hook output", testInboxHookOutput),
     ("session feed", testSessionFeed),
     ("hook payloads", testHookPayloads),
     ("state files", testStateFiles),

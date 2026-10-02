@@ -13,6 +13,8 @@ struct DockedIsland<ListBody: View>: View {
     let listBody: ListBody
     let reportExpandedWidth: (CGFloat) -> Void
     let reportListSize: (CGSize) -> Void
+    /// Sessions waiting in the inbox, so a waiting reply is visible before anything opens.
+    let waitingCount: Int
     let hoverChanged: (Bool) -> Void
     /// Pointer clicks reach the island through the window; these are the same two actions
     /// for VoiceOver, which cannot click a borderless panel's background.
@@ -93,6 +95,7 @@ struct DockedIsland<ListBody: View>: View {
                 .frame(width: TopDockPlacementPolicy.centerGap(notch: notch))
             IslandStatusIndicator(
                 sessions: sessions,
+                waitingCount: waitingCount,
                 reduceMotion: reduceMotion
             )
             .frame(maxWidth: .infinity)
@@ -179,7 +182,8 @@ struct DockedIsland<ListBody: View>: View {
         let active = sessions.filter { $0.activity != .ended }.count
         let waiting = sessions.filter(\.needsAttention).count
         let attention = waiting > 0 ? "\(waiting) need\(waiting == 1 ? "s" : "") attention, " : ""
-        return "\(active) active, \(attention)"
+        let inbox = waitingCount > 0 ? "\(waitingCount) waiting in the inbox, " : ""
+        return "\(active) active, \(attention)\(inbox)"
             + headline.accessibilityDescription(hooksInstalled: hooksInstalled)
     }
 }
@@ -270,11 +274,13 @@ struct IslandExpandedBody: View {
 /// count once there is more than one. Working is the one continuous animation in the app.
 struct IslandStatusIndicator: View {
     let sessions: [PresentedSession]
+    var waitingCount = 0
     let reduceMotion: Bool
 
     private enum Status: Equatable {
         case none
         case attention
+        case waiting
         case working
         case starting
         case idle
@@ -283,6 +289,7 @@ struct IslandStatusIndicator: View {
     private var status: Status {
         if sessions.isEmpty { return .none }
         if sessions.contains(where: \.needsAttention) { return .attention }
+        if waitingCount > 0 { return .waiting }
         if sessions.contains(where: { $0.activity == .working }) { return .working }
         if sessions.contains(where: { $0.activity == .starting || $0.isDiagnostic }) { return .starting }
         return .idle
@@ -292,6 +299,11 @@ struct IslandStatusIndicator: View {
         sessions.filter { $0.activity != .ended }.count
     }
 
+    /// While replies wait in the inbox, the count says how many; otherwise how many are active.
+    private var displayedCount: Int {
+        status == .waiting ? waitingCount : activeCount
+    }
+
     private var attentionCount: Int {
         sessions.filter(\.needsAttention).count
     }
@@ -299,6 +311,7 @@ struct IslandStatusIndicator: View {
     private var tint: Color {
         switch status {
         case .attention: PanelPalette.attention
+        case .waiting: PanelPalette.title
         case .working: PanelPalette.working
         case .starting: PanelPalette.starting
         case .idle, .none: PanelPalette.muted
@@ -309,8 +322,8 @@ struct IslandStatusIndicator: View {
         HStack(spacing: 4) {
             glyph
                 .frame(width: 14, height: 14)
-            if activeCount > 1 {
-                Text("\(activeCount)")
+            if displayedCount > 1 || status == .waiting {
+                Text("\(displayedCount)")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(tint)
@@ -318,7 +331,7 @@ struct IslandStatusIndicator: View {
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: activeCount)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: displayedCount)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: status)
         .accessibilityHidden(true)
     }
@@ -332,6 +345,12 @@ struct IslandStatusIndicator: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint)
                 .islandBounce(on: attentionCount, enabled: !reduceMotion)
+                .transition(.scale.combined(with: .opacity))
+        case .waiting:
+            Image(systemName: "tray.full.fill")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(tint)
+                .islandBounce(on: waitingCount, enabled: !reduceMotion)
                 .transition(.scale.combined(with: .opacity))
         case .working:
             Image(systemName: "waveform")
