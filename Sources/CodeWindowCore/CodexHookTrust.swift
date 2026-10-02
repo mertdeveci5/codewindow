@@ -67,18 +67,25 @@ public struct CodexHookTrust {
 
     /// Remove trust before removing the commands, while Codex can still identify their keys.
     public func remove(at locations: InstallLocations) throws {
+        var firstError: Error?
         for home in locations.codexHomes where FileManager.default.fileExists(atPath: home.appendingPathComponent("hooks.json").path) {
-            let connection = try CodexHookConnection(executable: executableURL, home: home)
-            defer { connection.close() }
-            let hooks = try connection.hooks()
-                .filter { owns($0, home: home, locations: locations) && $0.trustStatus != "untrusted" }
-            let edits: [[String: Any]] = try hooks.map { hook in
-                // JSON basic-string escaping is also valid for these TOML key segments.
-                let key = String(decoding: try JSONEncoder().encode(hook.key), as: UTF8.self)
-                return ["keyPath": "hooks.state.\(key)", "value": NSNull(), "mergeStrategy": "replace"]
+            do {
+                let connection = try CodexHookConnection(executable: executableURL, home: home)
+                defer { connection.close() }
+                // Untrusted hooks can still have an enabled=false state to remove.
+                let hooks = try connection.hooks().filter { owns($0, home: home, locations: locations) }
+                let edits: [[String: Any]] = try hooks.map { hook in
+                    // JSON basic-string escaping is also valid for these TOML key segments.
+                    let key = String(decoding: try JSONEncoder().encode(hook.key), as: UTF8.self)
+                    return ["keyPath": "hooks.state.\(key)", "value": NSNull(), "mergeStrategy": "replace"]
+                }
+                if !edits.isEmpty { try connection.write(edits: edits) }
+            } catch {
+                // A broken profile must not prevent cleanup in the remaining profiles.
+                if firstError == nil { firstError = error }
             }
-            if !edits.isEmpty { try connection.write(edits: edits) }
         }
+        if let firstError { throw firstError }
     }
 
     private func installedHooks(_ connection: CodexHookConnection, home: URL, locations: InstallLocations) throws -> [CodexConfiguredHook] {
