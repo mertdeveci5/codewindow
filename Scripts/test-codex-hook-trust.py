@@ -145,19 +145,35 @@ def check(helper, codex):
         assert next(h for h in refreshed[profile] if h["key"] == hook["key"])["enabled"] is False
         print("PASS refresh repairs old trust without enabling a disabled hook")
 
+        # Disabling an untrusted hook creates state without a trusted_hash.
+        # Uninstall must remove it too, or a fresh install stays disabled.
+        with Codex(codex, profile) as client:
+            client.write([{
+                "keyPath": "hooks.state." + json.dumps(hook["key"]),
+                "value": {"enabled": False},
+                "mergeStrategy": "replace",
+            }])
+
         install("uninstall")
         install("status", succeeds=False)
         install("refresh")
         for profile in profiles:
             with Codex(codex, profile) as client:
                 remaining = client.hooks()
+                state = client.request("config/read", {})["config"].get("hooks", {}).get("state", {})
             assert len(remaining) == 2
             assert not any("codewindow-report" in h.get("command", "") for h in remaining)
             config = (profile / "config.toml").read_text()
             assert 'model = "keep-me"' in config
             assert preserved[profile]["currentHash"] in config
             assert all(h["currentHash"] not in config for h in owned[profile])
+            assert all(h["key"] not in state for h in owned[profile])
         print("PASS uninstall removes CodeWindow trust and preserves other hooks")
+
+        install("install")
+        reinstalled = verify()
+        assert all(h["enabled"] for hooks in reinstalled.values() for h in hooks)
+        print("PASS reinstall enables hooks after removing untrusted disabled settings")
 
         (profiles[0] / "config.toml").write_text("invalid = [\n")
         result = install("install", succeeds=False)
@@ -180,6 +196,9 @@ def check(helper, codex):
         install("uninstall")
         assert not (home / "Library/Application Support/CodeWindow").exists()
         assert "codewindow-report" not in (profiles[0] / "hooks.json").read_text()
+        with Codex(codex, profiles[1]) as client:
+            state = client.request("config/read", {})["config"].get("hooks", {}).get("state", {})
+        assert all(h["key"] not in state for h in reinstalled[profiles[1]])
         print("PASS hooks can be removed even when Codex configuration is invalid")
 
 
