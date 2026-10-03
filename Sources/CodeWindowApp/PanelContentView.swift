@@ -56,9 +56,10 @@ struct PanelContentView: View {
                     hooksInstalled: hooksInstalled,
                     reduceMotion: reduceMotion,
                     listBody: panelBody,
+                    inboxBody: inboxView,
                     reportExpandedWidth: reportExpandedContentWidth,
                     reportListSize: reportFullContentSize,
-                    waitingCount: inbox.isEnabled ? inbox.waiting.count : 0,
+                    waitingKeys: inbox.isEnabled ? inbox.waiting.map(\.sessionKey) : [],
                     hoverChanged: islandHoverChanged,
                     open: revealPanel,
                     close: foldPanel
@@ -87,7 +88,7 @@ struct PanelContentView: View {
             }
             .contextMenu {
                 if inbox.isEnabled, !inbox.waiting.isEmpty {
-                    Button("Answer Next Waiting") { inbox.openOldest() }
+                    Button("Open Inbox") { inbox.open() }
                 }
                 Toggle(
                     "Inbox Mode",
@@ -177,14 +178,46 @@ struct PanelContentView: View {
         RoundedRectangle(cornerRadius: PanelMetrics.outerRadius, style: .continuous)
     }
 
+    /// The inbox grown out of the panel or island. Sessions it does not list are counted as
+    /// working, so the user knows the rest are fine.
+    private var inboxView: some View {
+        InboxView(
+            inbox: inbox,
+            feeds: store.feeds,
+            workingCount: store.sessions.filter { session in
+                !inbox.waiting.contains { $0.sessionKey == session.id }
+            }.count,
+            reduceMotion: reduceMotion,
+            openTerminal: { item in
+                if let session = store.sessions.first(where: { $0.id == item.sessionKey }) {
+                    _ = activateTerminal(session)
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var floatingContent: some View {
+        if inbox.isOpen {
+            inboxView
+                .transition(.islandContent)
+        } else {
+            panelBody
+                .transition(.islandContent)
+        }
+    }
+
     private var floatingPanel: some View {
-        panelBody
+        floatingContent
             .clipShape(floatingShape)
             .cwGlassSurface(
                 in: floatingShape,
                 reduceTransparency: reduceTransparency,
                 increasedContrast: contrast == .increased
             )
+            // Glass draws a soft shadow of its own past its shape, which the window's edge would
+            // cut off square. The window already casts the panel's shadow.
+            .clipShape(floatingShape)
             .overlay {
                 // Nearing the dock, the edge brightens as the island fades in at the camera.
                 floatingShape
@@ -195,12 +228,13 @@ struct PanelContentView: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: dock.dockProximity)
             .background {
                 GeometryReader { proxy in
-                    Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
+                    Color.clear.preference(key: PanelSizeKey.self, value: proxy.size)
                 }
             }
-            .onPreferenceChange(PanelHeightKey.self) { height in
-                reportFullContentSize(CGSize(width: PanelMetrics.width, height: height))
+            .onPreferenceChange(PanelSizeKey.self) { size in
+                reportFullContentSize(size)
             }
+            .onHover(perform: islandHoverChanged)
     }
 
     private var stack: some View {
@@ -260,6 +294,7 @@ struct PanelContentView: View {
 
     private enum ListEntry: Identifiable {
         case waitingHeader
+        case workingHeader
         case waiting(PresentedSession, InboxItem)
         case session(PresentedSession)
 
@@ -268,7 +303,15 @@ struct PanelContentView: View {
         var id: String {
             switch self {
             case .waitingHeader: "inbox-waiting-header"
+            case .workingHeader: "inbox-working-header"
             case let .waiting(session, _), let .session(session): session.id
+            }
+        }
+
+        var isHeader: Bool {
+            switch self {
+            case .waitingHeader, .workingHeader: true
+            case .waiting, .session: false
             }
         }
     }
@@ -285,10 +328,14 @@ struct PanelContentView: View {
             else { continue }
             entries.append(.waiting(session, item))
         }
-        if !entries.isEmpty || inbox.isClear {
-            entries.insert(.waitingHeader, at: 0)
+        let others = store.sessions.filter { !waitingIDs.contains($0.id) }
+        // Two sections only when there is something to separate: waiting from everything else.
+        guard !entries.isEmpty else { return others.map(ListEntry.session) }
+        entries.insert(.waitingHeader, at: 0)
+        if !others.isEmpty {
+            entries.append(.workingHeader)
+            entries += others.map(ListEntry.session)
         }
-        entries += store.sessions.filter { !waitingIDs.contains($0.id) }.map(ListEntry.session)
         return entries
     }
 
@@ -301,28 +348,21 @@ struct PanelContentView: View {
                 .transition(.opacity)
         } else {
             let entries = listEntries
-            ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                            row(for: entry, showsDivider: index > 0 && !isHeader(entries[index - 1]))
-                                .transition(rowTransition)
-                        }
-                    }
-                    .background {
-                        GeometryReader { geometry in
-                            Color.clear.preference(key: ListHeightKey.self, value: geometry.size.height)
-                        }
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        row(for: entry, showsDivider: index > 0 && !entries[index - 1].isHeader)
+                            .transition(rowTransition)
                     }
                 }
-                .frame(height: listHeight)
-                .onPreferenceChange(ListHeightKey.self) { listContentHeight = $0 }
-                .onChange(of: inbox.openItemID) { _ in
-                    // An opened card at the bottom of a long list scrolls into view whole.
-                    guard let session = inbox.openItem?.sessionKey else { return }
-                    withAnimation(motion) { proxy.scrollTo(session, anchor: .top) }
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: ListHeightKey.self, value: geometry.size.height)
+                    }
                 }
             }
+            .frame(height: listHeight)
+            .onPreferenceChange(ListHeightKey.self) { listContentHeight = $0 }
         }
     }
 
@@ -330,21 +370,35 @@ struct PanelContentView: View {
     private func row(for entry: ListEntry, showsDivider: Bool) -> some View {
         switch entry {
         case .waitingHeader:
-            InboxSectionHeader(
+            ListSectionHeader(
+                title: "Waiting for you",
                 count: inbox.waiting.count,
-                isClear: inbox.isClear && inbox.waiting.isEmpty,
+                symbol: "tray.full.fill",
+                tint: PanelPalette.attention,
+                action: { inbox.open() },
                 reduceMotion: reduceMotion
             )
+        case .workingHeader:
+            let others = store.sessions.filter { session in
+                !inbox.waiting.contains { $0.sessionKey == session.id }
+            }
+            let anyWorking = others.contains { $0.activity == .working }
+            ListSectionHeader(
+                title: anyWorking ? "Working" : "Other sessions",
+                count: others.count,
+                symbol: anyWorking ? "waveform" : "circle.fill",
+                tint: anyWorking ? PanelPalette.working : PanelPalette.muted,
+                reduceMotion: reduceMotion
+            )
+            .padding(.top, 4)
         case let .waiting(session, item):
             WaitingSessionRow(
                 session: session,
                 item: item,
-                isOpen: inbox.openItemID == item.id,
-                showsDivider: showsDivider,
                 reduceMotion: reduceMotion,
-                inbox: inbox,
-                openTerminal: { _ = activateTerminal(session) }
+                open: { inbox.open(selecting: item) }
             )
+            .padding(.vertical, 1)
         case let .session(session):
             SessionRow(
                 session: session,
@@ -357,18 +411,12 @@ struct PanelContentView: View {
         }
     }
 
-    private func isHeader(_ entry: ListEntry) -> Bool {
-        if case .waitingHeader = entry { true } else { false }
-    }
-
     private var listHeight: CGFloat {
-        // An open card may need more room than the usual eight rows.
-        let limit = PanelMetrics.maximumListHeight + (inbox.openItemID == nil ? 0 : 200)
-        return min(max(listContentHeight, PanelMetrics.rowHeight), limit)
+        min(max(listContentHeight, PanelMetrics.rowHeight), PanelMetrics.maximumListHeight)
     }
 
     private var isSessionListOverflowing: Bool {
-        listContentHeight > PanelMetrics.maximumListHeight + (inbox.openItemID == nil ? 0 : 200)
+        listContentHeight > PanelMetrics.maximumListHeight
     }
 
     /// Height of the scrollable band, measured up from the panel's bottom bezel. Zero while
@@ -633,10 +681,11 @@ private struct ListHeightKey: PreferenceKey {
     }
 }
 
-private struct PanelHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
+private struct PanelSizeKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        value = CGSize(width: max(value.width, next.width), height: max(value.height, next.height))
     }
 }

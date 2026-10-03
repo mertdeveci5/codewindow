@@ -69,6 +69,8 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     private var alertWork: DispatchWorkItem?
     private var settleWork: DispatchWorkItem?
     private var isUnfolded = false
+    private var isInboxOpen = false
+    private var inboxCloseWork: DispatchWorkItem?
     private var isIslandHovered = false
     private var isPeeking = false
     private var isAlerting = false
@@ -81,6 +83,12 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     /// The inspector keeps an unfolded panel open while the pointer is off in a detail view.
     var isInspectorActive: () -> Bool = { false }
     var didChangeDockState: () -> Void = {}
+    /// Someone is waiting in the inbox, so the island's status slot opens it directly.
+    var hasWaiting: () -> Bool = { false }
+    /// The user is partway through a reply; the inbox stays open even with the pointer elsewhere.
+    var isInboxHeld: () -> Bool = { false }
+    var requestInboxOpen: () -> Void = {}
+    var requestInboxClose: () -> Void = {}
 
     init(panel: FloatingPanel, defaults: UserDefaults = .standard) {
         self.panel = panel
@@ -178,7 +186,8 @@ final class TopDockController: NSObject, TopDockPanelObserver {
             hasSessions: hasSessions,
             isUnfolded: isUnfolded,
             isHovered: isPeeking,
-            isAlerting: isAlerting
+            isAlerting: isAlerting,
+            isInboxOpen: isInboxOpen
         )
     }
 
@@ -247,7 +256,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         }
 
         let expanding = target.height >= model.islandSize.height
-        // Within one presentation, such as the list growing around an opened card, the island
+        // Within one presentation, such as the list growing as sessions arrive, the island
         // moves on the same spring as the content inside it, so the two never pull apart.
         let spring = presentation == model.presentation
             ? IslandMotion.resize
@@ -314,7 +323,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         DispatchQueue.main.asyncAfter(deadline: .now() + IslandMotion.settleDelay, execute: work)
     }
 
-    /// After an inbox card closes from the keyboard, nothing hovers away to fold the island.
+    /// After the inbox closes from the keyboard, nothing hovers away to fold the island.
     func foldIfPointerIsAway() {
         guard isUnfolded, !panel.frame.contains(NSEvent.mouseLocation) else { return }
         scheduleFold(after: 0.45)
@@ -322,14 +331,21 @@ final class TopDockController: NSObject, TopDockPanelObserver {
 
     /// Only the unfolded list floats over other windows; the smaller states sit on the bezel.
     private func settleShadow() {
-        panel.hasShadow = !model.isDocked || model.isUnfolded
+        panel.hasShadow = !model.isDocked || model.isUnfolded || model.presentation == .inbox
         panel.invalidateShadow()
+        // The shadow follows the window's drawn shape. Right after a resize that shape is still
+        // the old one, so measure it again once the new frame has actually been drawn.
+        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
     }
 
     private func floatingFrame(on screen: NSScreen) -> NSRect {
         let visibleFrame = screen.visibleFrame
         let maximumHeight = visibleFrame.height - PanelMetrics.screenMargin * 2
         let height = min(ceil(fullContentSize.height), maximumHeight)
+        let width = min(
+            max(ceil(fullContentSize.width), PanelMetrics.width),
+            visibleFrame.width - PanelMetrics.screenMargin * 2
+        )
         let currentTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
         // A size measurement can arrive while AppKit is still visually animating a
         // menu-driven detach. Use the remembered floating anchor instead of treating an
@@ -342,7 +358,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         var frame = NSRect(
             x: topLeft.x,
             y: topLeft.y - height,
-            width: PanelMetrics.width,
+            width: width,
             height: height
         )
         let minimumX = visibleFrame.minX + PanelMetrics.screenMargin
@@ -442,6 +458,7 @@ final class TopDockController: NSObject, TopDockPanelObserver {
     }
 
     private func cancelTransientWork() {
+        inboxCloseWork?.cancel()
         foldWork?.cancel()
         peekWork?.cancel()
         alertWork?.cancel()
@@ -449,12 +466,57 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         settleWork = nil
     }
 
+    // MARK: - Inbox
+
+    /// The inbox grows out of whatever is showing, floating or docked, and folds back into it.
+    func inboxDidChange(isOpen: Bool) {
+        guard isOpen != isInboxOpen else { return }
+        isInboxOpen = isOpen
+        inboxCloseWork?.cancel()
+        foldWork?.cancel()
+        peekWork?.cancel()
+        isPeeking = false
+        if model.isDocked { layout(animated: true) }
+        didChangeDockState()
+        if !isOpen { foldIfPointerIsAway() }
+    }
+
+    private func scheduleInboxClose(after delay: TimeInterval) {
+        inboxCloseWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isInboxOpen, !self.isIslandHovered else { return }
+            if self.isInboxHeld() {
+                // Typing with the pointer parked elsewhere is normal; check again shortly.
+                self.scheduleInboxClose(after: 0.5)
+            } else {
+                self.requestInboxClose()
+            }
+        }
+        inboxCloseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// A click on the island's status slot, right of the camera, goes straight to the inbox when
+    /// someone is waiting; anywhere else opens the session list.
+    private func clickTargetsInbox() -> Bool {
+        guard hasWaiting() else { return false }
+        let location = NSEvent.mouseLocation
+        let frame = panel.frame
+        return location.x >= frame.midX + model.notchWidth / 2
+    }
+
     // MARK: - Hover
 
     /// Resting under the pointer peeks at the current action; leaving an unfolded list closes
-    /// it once the pointer has been away for a moment, unless an inspector is the reason.
+    /// it once the pointer has been away for a moment, unless an inspector is the reason. The
+    /// inbox closes the same way, unless the user is typing in it.
     func islandHoverChanged(_ isHovered: Bool) {
         isIslandHovered = isHovered
+        if isInboxOpen {
+            inboxCloseWork?.cancel()
+            if !isHovered { scheduleInboxClose(after: 0.6) }
+            return
+        }
         guard model.isDocked else { return }
         if isUnfolded {
             foldWork?.cancel()
@@ -533,7 +595,9 @@ final class TopDockController: NSObject, TopDockPanelObserver {
         defer { dragStartFrame = nil }
         guard moved else {
             // A click on the resting island, not a drag.
-            if model.isDocked, !isUnfolded { unfold() }
+            if model.isDocked, !isUnfolded, !isInboxOpen {
+                clickTargetsInbox() ? requestInboxOpen() : unfold()
+            }
             return
         }
         if model.isDocked {

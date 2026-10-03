@@ -111,7 +111,7 @@ enum IslandMotion {
     static let settleDelay: TimeInterval = 0.62
 
     /// Family's measured tray spring: content growing or shrinking inside the same surface,
-    /// such as a row opening into its card. Settles in about 0.28s with under a point of overshoot.
+    /// such as the inbox growing out of the list. Settles in about 0.28s with under a point of overshoot.
     static let resize = Animation.spring(response: 0.27, dampingFraction: 0.88)
 
     static let present = Animation.spring(response: 0.32, dampingFraction: 0.82)

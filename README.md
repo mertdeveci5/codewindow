@@ -4,7 +4,7 @@ CodeWindow is a small Mac app that shows what terminal coding agents are doing. 
 
 The panel stays above other windows and follows you across Spaces. Each running session gets one row. A row can show the current task, a command preview, a file name, a search phrase, a web page, a tool target, or a request for permission.
 
-CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. Process ancestry lets the same behavior work with integrated terminals.
+CodeWindow hides when the frontmost terminal owns a connected agent process. It reappears when you switch to another app or Space, much like picture-in-picture video. In inbox mode it stays visible while an agent is waiting for you. Process ancestry lets the same behavior work with integrated terminals.
 
 Hover over the panel and move two fingers on the trackpad to reposition it without clicking. The pointer hides and travels with the panel, then returns over the panel when the gesture ends. When enough sessions are running for the rows to scroll, use the grab strip above them to move the panel; gestures over the rows scroll the list. You can also move the panel by clicking and dragging the grab strip or background.
 
@@ -79,17 +79,18 @@ On macOS 26 the floating panel and the session detail view use Liquid Glass. Ear
 
 Inbox mode lets you answer agents from CodeWindow instead of switching to each terminal. Right-click the panel and choose **Inbox Mode**, or press **⌃⌥I**. Pressing the shortcut also turns the mode on.
 
-When an agent finishes a turn or asks for permission, its session moves into a **Waiting for you** section at the top of the panel, oldest first. On the docked island, the right side of the camera shows a tray and the number waiting.
+When an agent finishes a turn or asks for permission, its session moves into a **Waiting for you** section at the top of the panel, oldest first, apart from the sessions that are still working. On the docked island, the right side of the camera shows a tray and the number waiting.
 
-Click a waiting session, or press ⌃⌥I, and its row opens into a card. The card shows what you asked, the agent's full message, and a reply field. For a permission request it shows the command, with **Approve**, **Deny**, and **Terminal** buttons:
+Click a waiting session, the **Waiting for you** header, or the tray on the island, or press ⌃⌥I. The panel or island grows into the inbox: waiting sessions on the left, and on the right what you asked, the agent's full message, and a reply field. For a permission request it shows the command, with **Approve**, **Deny**, and **Answer in Terminal**.
 
 - **Return** sends your reply. **Option-Return** adds a new line.
-- **⌘Return** approves a permission request, and **⌘N** denies it.
-- **Escape** closes the card and keeps what you typed.
+- **⌘Return** approves a permission request, and **⌘Delete** denies it.
+- **⌘[** and **⌘]** move between waiting sessions. **⌘O** opens the session's terminal.
+- Move the pointer away, or press **Escape**, and the inbox folds back. A reply you have started keeps it open, and drafts are kept either way.
 
-After you answer, the card closes and its session moves back down with the working sessions. The next waiting session then opens. When nothing is left, the section shows **Inbox zero** for a moment and closes.
+After you answer, the session shows what happened for a moment, leaves the list, and the next one opens. When nothing is left, the inbox shows **Inbox zero** and folds itself away.
 
-The panel takes your typing while a card is open, without switching apps. It stays visible even over the terminal that owns the session.
+The inbox takes your typing without switching apps. While anything is waiting, the panel stays visible even over the terminal where your agents run, so you see a waiting session while you work in another one.
 
 How each agent gets your answer:
 

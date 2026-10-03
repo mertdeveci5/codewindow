@@ -11,6 +11,8 @@ public enum IslandPresentation: String, Equatable, Sendable {
     case expanded
     /// Every session, as in the floating panel.
     case list
+    /// The inbox: the island grown wide and tall around the sessions waiting on the user.
+    case inbox
 }
 
 /// Pure geometry for the top dock. AppKit adapts `NSScreen` into these values, while tests
@@ -40,6 +42,8 @@ public enum TopDockPlacementPolicy {
     /// Matches the full activity panel. The island must never become wider than the view it
     /// unfolds into, or opening it would visibly reverse direction and shrink.
     public static let maximumIslandWidth: CGFloat = 296
+    /// Room for a column of waiting sessions beside a readable message and its reply.
+    public static let inboxSize = CGSize(width: 600, height: 420)
 
     /// Derives the camera housing between the two unobscured menu-bar regions.
     public static func notch(
@@ -105,6 +109,8 @@ public enum TopDockPlacementPolicy {
                 width: max(resting, listSize.width),
                 height: band + max(0, listSize.height)
             )
+        case .inbox:
+            return CGSize(width: max(resting, inboxSize.width), height: band + inboxSize.height)
         }
     }
 
@@ -188,8 +194,10 @@ public enum IslandPresentationPolicy {
         hasSessions: Bool,
         isUnfolded: Bool,
         isHovered: Bool,
-        isAlerting: Bool
+        isAlerting: Bool,
+        isInboxOpen: Bool = false
     ) -> IslandPresentation {
+        if isInboxOpen { return .inbox }
         if isUnfolded { return .list }
         if isHovered { return .expanded }
         guard hasSessions else { return .minimal }
