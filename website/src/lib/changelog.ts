@@ -8,6 +8,16 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.33",
+    date: "2026-10-03",
+    dateLabel: "Oct 3, 2026",
+    changes: [
+      "Keeps the panel visible over your terminal while an agent is waiting for you in Inbox mode.",
+      "Expands the island or floating panel into an inbox with waiting sessions, full messages, replies, and permission controls.",
+      "Separates waiting sessions from working sessions and adds keyboard navigation, saved reply drafts, and an Inbox zero state.",
+    ],
+  },
+  {
     version: "0.1.32",
     date: "2026-10-02",
     dateLabel: "Oct 2, 2026",
