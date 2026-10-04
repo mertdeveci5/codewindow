@@ -336,6 +336,8 @@ func testIslandPresentation() throws {
 func testInbox() throws {
     let state = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: state) }
+    let presence = try AppPresence(in: state)
+    defer { withExtendedLifetime(presence) {} }
     let root = try InboxFiles.directory(stateDirectory: state)
     let mode = try unwrap(
         FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber,
@@ -2471,7 +2473,19 @@ func testCoolRunnerCancellationAndOutputLimit() async throws {
     )
 }
 
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--app-presence-host" {
+    do {
+        try runAppPresenceHost(in: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true))
+        exit(0)
+    } catch {
+        fputs("FAIL presence host: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
 let tests: [(String, () throws -> Void)] = [
+    ("app presence", testAppPresence),
+    ("inbox without app", testInboxWithoutApp),
     ("inspector placement", testInspectorPlacement),
     ("top dock placement", testTopDockPlacement),
     ("island presentation", testIslandPresentation),

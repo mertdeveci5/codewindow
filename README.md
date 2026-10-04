@@ -19,7 +19,7 @@ The release includes code for Apple silicon and Intel Macs.
 
 ## Install
 
-1. Download `CodeWindow-v0.1.33-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
+1. Download `CodeWindow-v0.1.34-macOS-universal.dmg` from the [latest release](https://github.com/mertdeveci5/codewindow/releases/latest).
 2. Open the disk image.
 3. Drag `CodeWindow.app` onto the Applications folder in the window.
 4. Open CodeWindow.
@@ -54,7 +54,7 @@ Click a session once to expand its latest task and action. Click the expanded se
 
 Right-click the panel and choose Hide CodeWindow to remove the panel without stopping its session tracking. Open CodeWindow again from Applications, Finder, or Spotlight to show it again.
 
-Choose Quit CodeWindow from the same menu to stop the app completely. Open CodeWindow normally to start it again. You can also use Terminal:
+Choose Quit CodeWindow from the same menu to stop the app completely. The agent hooks remain installed but stop recording activity and intercepting inbox prompts while the app is not running. Pending inbox waits return control to the terminal when the last CodeWindow instance quits or crashes. Hiding the panel does not stop reporting. Open CodeWindow normally to start it again; reporting resumes on the next agent hook without reinstalling anything. Events while the app was closed are not replayed. You can also use Terminal:
 
 ```sh
 open -a CodeWindow
@@ -153,7 +153,9 @@ Then move `CodeWindow.app` to the Trash.
 
 ## What the hooks record
 
-Each hook starts a small reporter process. The reporter exits after writing the current state.
+Each hook starts a small reporter process. It consumes the bounded hook input and checks whether a CodeWindow app instance is alive before parsing the event, discovering the agent process, or writing state. With no app running, it exits successfully without creating state or entering an inbox wait. A short process launch still occurs; hooks are not repeatedly installed and removed on app quit.
+
+Each app instance keeps a private registration containing its PID and kernel start time. The reporter verifies both, so a crash-leftover file or a reused PID cannot keep reporting active. Multiple app instances are supported: closing one does not disable another. Reopening cleans stale registrations. Inbox mode remains your saved preference, not proof that the app is running.
 
 A state file contains:
 
@@ -255,9 +257,12 @@ open -n ./build/CodeWindow.app --env CODEWINDOW_PREVIEW=list --args --ui-preview
 ```sh
 ./Scripts/test.sh
 ./build/CodeWindow.app/Contents/MacOS/CodeWindow --smoke-test
+./Scripts/test-agent-integrations.sh
 ```
 
 The smoke test checks the floating window behavior, all-Spaces support, full-screen support, bundled icons, trackpad movement, inspector transitions, and panel width. It also reports the session count at launch.
+
+The packaged integration suite tests closed-app no-ops, persisted inbox preferences, normal quit, SIGKILL, multiple app instances, prompt handback, and reopening with the actual reporter binary. Its app-presence host uses real process registrations, not a production bypass flag.
 
 ## Logo sources
 

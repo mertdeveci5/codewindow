@@ -8,6 +8,16 @@ export type ChangelogEntry = {
 /** Every published CodeWindow tag, newest first. There was no v0.1.12 release. */
 export const CHANGELOG = [
   {
+    version: "0.1.34",
+    date: "2026-10-04",
+    dateLabel: "Oct 4, 2026",
+    changes: [
+      "Stops hook reporting and inbox interception while CodeWindow is quit, without removing your agent integrations.",
+      "Returns waiting inbox prompts to the terminal when the last app instance quits or crashes.",
+      "Verifies app process identities so stale files and reused PIDs cannot keep hooks active; resumes reporting on the next event after reopening.",
+    ],
+  },
+  {
     version: "0.1.33",
     date: "2026-10-03",
     dateLabel: "Oct 3, 2026",
