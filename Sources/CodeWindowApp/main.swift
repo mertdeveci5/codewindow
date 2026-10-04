@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dock: TopDockController?
     private var inspector: InspectorController?
     private var store: SessionStore?
+    private var appPresence: AppPresence?
     private var sessionsCancellable: AnyCancellable?
     private var cloudStateCancellable: AnyCancellable?
     private var cloudView: CloudViewController?
@@ -86,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 discoversTerminalAgents: !isPreview
             )
             self.store = store
+            appPresence = try AppPresence(in: store.directory)
             if isSmokeTest {
                 updateReminder.availableVersion = "99.0"
             }
@@ -515,6 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        appPresence = nil
         cloudView?.shutdown()
     }
 

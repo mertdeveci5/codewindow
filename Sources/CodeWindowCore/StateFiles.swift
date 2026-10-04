@@ -8,7 +8,8 @@ public enum StateFiles {
 
     private static let reportingFailureFileName = ".reporting-failure"
 
-    public static func directory(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> URL {
+    /// Resolve the location without creating directories. Closed-app hooks must not write state.
+    public static func location(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> URL {
         let url: URL
         if let override = environment["CODEWINDOW_STATE_DIR"], !override.isEmpty {
             url = URL(fileURLWithPath: override, isDirectory: true)
@@ -17,12 +18,17 @@ public enum StateFiles {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask,
                 appropriateFor: nil,
-                create: true
+                create: false
             )
             .appendingPathComponent("CodeWindow", isDirectory: true)
             .appendingPathComponent("State", isDirectory: true)
         }
 
+        return url
+    }
+
+    public static func directory(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> URL {
+        let url = try location(environment: environment)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
         return url

@@ -36,7 +36,15 @@ fi
 /usr/bin/printf '%s\n' 'export default function unrelated() {}' \
     > "$home/.pi/agent/extensions/unrelated.js"
 
+/usr/bin/swift build --package-path "$repo_dir" --product CodeWindowTests >/dev/null
+presence_host=$(/usr/bin/swift build --package-path "$repo_dir" --show-bin-path)/CodeWindowTests
+live_app() {
+    /usr/bin/python3 "$repo_dir/Scripts/app_presence_fixture.py" "$presence_host" "$CODEWINDOW_STATE_DIR" "$@"
+}
+
 CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" install --home "$home" >/dev/null
+/usr/bin/python3 "$repo_dir/Scripts/test-reporter-lifecycle.py" \
+    "$home/Library/Application Support/CodeWindow/bin/codewindow-report" "$presence_host"
 CODEWINDOW_DISABLE_ANALYTICS=1 "$helper" status --home "$home" >/dev/null
 
 pi_extension="$home/.pi/agent/extensions/codewindow.js"
@@ -49,7 +57,7 @@ if /usr/bin/grep -q 'import type' "$pi_extension"; then
 fi
 
 CODEWINDOW_STATE_DIR="$state_directory" \
-    /usr/bin/env node \
+    live_app /usr/bin/env node \
     "$repo_dir/Scripts/pi-extension-spike.mjs" \
     "$pi_extension" \
     "$state_directory"
@@ -99,12 +107,12 @@ for agent in claude codex; do
     # The hook normally runs inside a live agent process, which is how the reporter stamps the
     # session. Pin this shell's pid so the check does not depend on which agents are running.
     print -r -- '{"session_id":"lifecycle","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"lets go"}' \
-        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$prompt_hook --pid $$"
+        | CODEWINDOW_STATE_DIR="$agent_state" live_app /bin/sh -c "$prompt_hook --pid $$"
     print -r -- '{"session_id":"lifecycle","hook_event_name":"PreToolUse","cwd":"/tmp/codewindow","tool_name":"Bash","tool_use_id":"lifecycle-1","tool_input":{"command":"swift build"}}' \
-        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$pre_hook --pid $$"
+        | CODEWINDOW_STATE_DIR="$agent_state" live_app /bin/sh -c "$pre_hook --pid $$"
     # Codex reports completion without repeating the tool input, so the row has to carry it.
     print -r -- '{"session_id":"lifecycle","hook_event_name":"PostToolUse","cwd":"/tmp/codewindow","tool_name":"Bash","tool_use_id":"lifecycle-1"}' \
-        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$post_hook --pid $$"
+        | CODEWINDOW_STATE_DIR="$agent_state" live_app /bin/sh -c "$post_hook --pid $$"
 
     finished_row=$(report_state "$agent_state")
     if [[ "$finished_row" != $'working\trunningCommand\tswift build' ]]; then
@@ -124,7 +132,7 @@ for agent in claude codex; do
     # Claude remains available between turns. Codex tasks are one-shot from CodeWindow's point
     # of view, so a finished turn becomes an ended tombstone and leaves the visible list.
     print -r -- '{"session_id":"lifecycle","hook_event_name":"Stop","cwd":"/tmp/codewindow"}' \
-        | CODEWINDOW_STATE_DIR="$agent_state" /bin/sh -c "$(hook_command "$configuration" Stop) --pid $$"
+        | CODEWINDOW_STATE_DIR="$agent_state" live_app /bin/sh -c "$(hook_command "$configuration" Stop) --pid $$"
     settled_row=$(report_state "$agent_state")
     expected_activity=$([[ "$agent" == "codex" ]] && print ended || print idle)
     if [[ "$settled_row" != "$expected_activity"$'\twaiting\tswift build' ]]; then
@@ -139,9 +147,9 @@ print -- "PASS installed Claude and Codex hook lifecycle"
 interrupt_state="$temporary_root/state-codex-interrupt"
 /bin/mkdir -p "$interrupt_state"
 print -r -- '{"session_id":"interrupted","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"stop me"}' \
-    | CODEWINDOW_STATE_DIR="$interrupt_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
+    | CODEWINDOW_STATE_DIR="$interrupt_state" live_app /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
 print -r -- '{"session_id":"interrupted","hook_event_name":"Interrupt","cwd":"/tmp/codewindow"}' \
-    | CODEWINDOW_STATE_DIR="$interrupt_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" Interrupt) --pid $$"
+    | CODEWINDOW_STATE_DIR="$interrupt_state" live_app /bin/sh -c "$(hook_command "$home/.codex/hooks.json" Interrupt) --pid $$"
 if [[ $(report_state "$interrupt_state") != $'ended\twaiting\t' ]]; then
     print -u2 -- "Codex cancellation did not end its chat"
     exit 1
@@ -153,7 +161,7 @@ print -- "PASS Codex cancellation ends its chat"
 subagent_state="$temporary_root/state-codex-subagent"
 /bin/mkdir -p "$subagent_state"
 print -r -- '{"session_id":"parent","hook_event_name":"UserPromptSubmit","agent_id":"child","agent_type":"worker","cwd":"/tmp/codewindow","prompt":"child task"}' \
-    | CODEWINDOW_STATE_DIR="$subagent_state" /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
+    | CODEWINDOW_STATE_DIR="$subagent_state" live_app /bin/sh -c "$(hook_command "$home/.codex/hooks.json" UserPromptSubmit) --pid $$"
 if /usr/bin/find "$subagent_state" -maxdepth 1 -name '*.json' -print -quit | /usr/bin/grep -q .; then
     print -u2 -- "Codex subagent created top-level session state"
     exit 1
@@ -201,7 +209,7 @@ parallel_state="$temporary_root/state-parallel"
 reporter="$home/Library/Application Support/CodeWindow/bin/codewindow-report"
 for index in 1 2 3 4 5 6; do
     print -r -- "{\"session_id\":\"parallel\",\"hook_event_name\":\"PreToolUse\",\"cwd\":\"/tmp/codewindow\",\"tool_name\":\"Bash\",\"tool_use_id\":\"p$index\",\"tool_input\":{\"command\":\"job-$index\"}}" \
-        | CODEWINDOW_STATE_DIR="$parallel_state" "$reporter" --agent claude --pid $$ &
+        | CODEWINDOW_STATE_DIR="$parallel_state" live_app "$reporter" --agent claude --pid $$ &
 done
 wait
 landed=$(/usr/bin/python3 -c '
@@ -219,13 +227,13 @@ print -- "PASS concurrent hooks for one session"
 failure_state="$temporary_root/state-failure"
 /bin/mkdir -p "$failure_state"
 print -r -- '{"session_id":"failing","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"hello"}' \
-    | CODEWINDOW_STATE_DIR="$failure_state" "$reporter" --agent claude --pid $$
+    | CODEWINDOW_STATE_DIR="$failure_state" live_app "$reporter" --agent claude --pid $$
 session_file=$(/bin/ls "$failure_state" | /usr/bin/grep '\.json$' | /usr/bin/head -n 1)
 /bin/rm "$failure_state/$session_file"
 /bin/mkdir "$failure_state/$session_file"   # the destination can no longer be replaced
 set +e
 print -r -- '{"session_id":"failing","hook_event_name":"UserPromptSubmit","cwd":"/tmp/codewindow","prompt":"hello"}' \
-    | CODEWINDOW_STATE_DIR="$failure_state" "$reporter" --agent claude --pid $$ 2>/dev/null
+    | CODEWINDOW_STATE_DIR="$failure_state" live_app "$reporter" --agent claude --pid $$ 2>/dev/null
 report_status=$?
 set -e
 if (( report_status == 0 )); then

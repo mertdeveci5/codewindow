@@ -30,10 +30,9 @@ struct HookEvent {
     let process: ProcessStamp
 }
 
-func readEvent() throws -> HookEvent? {
+func readEvent(_ input: Data) throws -> HookEvent? {
     guard let rawAgent = argument(after: "--agent"),
           let agent = AgentKind(rawValue: rawAgent),
-          let input = try FileHandle.standardInput.read(upToCount: maximumInputBytes + 1),
           input.count <= maximumInputBytes,
           let json = try JSONSerialization.jsonObject(with: input) as? [String: Any]
     else { return nil }
@@ -129,7 +128,13 @@ func inbox(_ event: HookEvent) throws -> InboxHookOutput {
 }
 
 do {
-    guard let event = try readEvent() else { exit(0) }
+    // Consume the bounded hook input so the agent does not see a broken stdin pipe. When the
+    // app is closed, skip JSON parsing, process discovery, state writes, and inbox interception.
+    guard let input = try FileHandle.standardInput.read(upToCount: maximumInputBytes + 1),
+          let directory = try? StateFiles.location(),
+          AppPresence.isRunning(in: directory),
+          let event = try readEvent(input)
+    else { exit(0) }
     if CommandLine.arguments.contains("--inbox") {
         let output = try inbox(event)
         if let text = output.standardOutput { print(text) }

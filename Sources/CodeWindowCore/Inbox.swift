@@ -388,7 +388,7 @@ public struct InboxHookOutput: Equatable, Sendable {
     }
 }
 
-/// Holds a hook open until the user answers its item, the item is retired, or the agent exits.
+/// Holds a hook open until answered, retired, or either the agent or the last app instance exits.
 public enum InboxWaiter {
     public static func wait(
         for item: InboxItem,
@@ -399,6 +399,12 @@ public enum InboxWaiter {
     ) -> InboxResponse? {
         var nextLivenessCheck = Date()
         while Date() < deadline {
+            // Check every poll, not just at startup: quit/crash must return the prompt to the
+            // terminal promptly, even when inbox mode remains enabled for the next app run.
+            guard AppPresence.isRunning(in: root.deletingLastPathComponent()) else {
+                InboxFiles.remove(itemID: item.id, in: root)
+                return nil
+            }
             if let response = InboxFiles.takeResponse(for: item.id, in: root) {
                 InboxFiles.remove(itemID: item.id, in: root)
                 return response
